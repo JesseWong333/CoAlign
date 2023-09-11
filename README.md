@@ -1,4 +1,4 @@
-# CoAlign (ICRA2023)
+# A fork of CoAlign
 
 Robust Collaborative 3D Object Detection in Presence of Pose Errors 
 
