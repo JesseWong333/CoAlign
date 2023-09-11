@@ -1,0 +1,22 @@
+# V2VNet
+nohup python opencood/tools/train.py --hypes_yaml ./opencood/hypes_yaml/dairv2x/lidar_only_without_noise/pointpillar_v2vnet.yaml > pointpillar_v2vnet.out 2>&1 &
+
+# V2X-ViT
+nohup python opencood/tools/train.py --hypes_yaml ./opencood/hypes_yaml/dairv2x/lidar_only_without_noise/pointpillar_v2xvit.yaml > pointpillar_v2xvit.out 2>&1 &
+
+# SECOND single
+
+nohup python opencood/tools/train.py --hypes_yaml ./opencood/hypes_yaml/dairv2x/lidar_only_without_noise/SECOND_single.yaml > SECOND_single.out 2>&1 &
+
+# point_pillar single 之前15 epoch就最好了， 减小batch_size, 增大
+nohup python opencood/tools/train.py --hypes_yaml ./opencood/hypes_yaml/dairv2x/lidar_only_without_noise/pointpillar_single.yaml > pointpillar_single.out 2>&1 &
+
+# voxel net 
+nohup python opencood/tools/train.py --hypes_yaml ./opencood/hypes_yaml/dairv2x/lidar_only_without_noise/voxelnet_single.yaml > voxelnet_single.out 2>&1 &
+
+
+# self-attn
+nohup python -u opencood/tools/train.py --hypes_yaml ./opencood/hypes_yaml/dairv2x/lidar_only_without_noise/pointpillar_selfatt.yaml > pointpillar_selfatt.out 2>&1 &
+
+
+
