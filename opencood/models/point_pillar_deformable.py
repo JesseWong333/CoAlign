@@ -30,6 +30,11 @@ class PointPillarDeformable(nn.Module):
             self.use_dir = True
             self.dir_head = nn.Conv2d(128 * 3, args['dir_args']['num_bins'] * args['anchor_number'],
                                   kernel_size=1) # BIN_NUM = 2
+        
+        if 'calibrate' in args['base_bev_backbone']['defor_encoder']:
+            self.calibrate = args['base_bev_backbone']['defor_encoder']['calibrate']
+        else:
+            self.calibrate = False
 
     def forward(self, data_dict):
 
@@ -50,8 +55,11 @@ class PointPillarDeformable(nn.Module):
         batch_dict = self.scatter(batch_dict)
 
         batch_dict = self.backbone(batch_dict)
-        spatial_features_2d = batch_dict['spatial_features_2d']
 
+        if self.calibrate:
+            spatial_features_2d, coord_predictions = batch_dict['spatial_features_2d']
+        else:
+            spatial_features_2d = batch_dict['spatial_features_2d']
 
         psm = self.cls_head(spatial_features_2d)
         rm = self.reg_head(spatial_features_2d)
@@ -60,6 +68,8 @@ class PointPillarDeformable(nn.Module):
                        'reg_preds': rm}
         if self.use_dir:
             output_dict.update({'dir_preds': self.dir_head(spatial_features_2d)})
+        if self.calibrate:
+            output_dict.update({'calibrate': coord_predictions})
             
         return output_dict
     

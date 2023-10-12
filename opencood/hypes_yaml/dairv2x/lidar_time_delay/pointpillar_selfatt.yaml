@@ -1,16 +1,13 @@
-name: dairv2x_point_pillar_lidar_deformable_attn_withnoise
+name: dairv2x_point_pillar_lidar_selfatt_withnoise
 data_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
 root_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
 validate_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# data_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
-# root_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-# validate_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# test_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 
+time_delay: 5
 
 noise_setting:
-  add_noise: true
+  add_noise: false
   args: 
     pos_std: 0.2
     rot_std: 0.2
@@ -19,8 +16,8 @@ noise_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 4
-  epoches: 40
+  batch_size: &batch_size 8
+  epoches: 20
   eval_freq: 2
   save_freq: 2
   max_cav: &max_cav 5
@@ -84,7 +81,7 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_deformable
+  core_method: point_pillar_intermediate
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
@@ -105,16 +102,7 @@ model:
       num_filters: [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
-      defor_encoder: 
-        block_cfgs: [[384, 8, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-                    [384, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-                    [384, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
-        bev_h: 100
-        bev_w: 252
-        embed_dims: 384
-        max_num_features: 2
-        calibrate : &calibrate false
-        flow_pred_max_iter: 4
+
 
     dir_args: *dir_args
 
@@ -137,8 +125,7 @@ loss:
       type: 'WeightedSoftmaxClassificationLoss'
       weight: 0.2
       args: *dir_args
-    calibrate: *calibrate
-
+    calibrate: false
 
 optimizer:
   core_method: Adam

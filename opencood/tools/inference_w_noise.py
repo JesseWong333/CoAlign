@@ -210,8 +210,8 @@ def main():
             AP50.append(ap50)
             AP70.append(ap70)
 
-            dump_dict = {'ap30': AP30 ,'ap50': AP50, 'ap70': AP70}
-            yaml_utils.save_yaml(dump_dict, os.path.join(opt.model_dir, f'AP030507_{opt.note}{suffix}.yaml'))
+        dump_dict = {'ap30': AP30 ,'ap50': AP50, 'ap70': AP70}
+        yaml_utils.save_yaml(dump_dict, os.path.join(opt.model_dir, f'AP030507_{opt.note}{suffix}.yaml'))
 
 
 if __name__ == '__main__':

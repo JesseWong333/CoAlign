@@ -1,15 +1,16 @@
 # modified by Junjie Wang
-# copy and paste from BEVformer 
+# from BEVformer 
 
 # 采用最小化的写法, 参照vis的写法
 import torch
 import torch.nn as nn
 import math
 from opencood.utils.mmcv_utils import constant_init, xavier_init
-# from multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32 as MultiScaleDeformableAttnFunction
 from opencood.models.sub_modules.torch_transformation_utils import warp_affine_simple
+# from multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32 as MultiScaleDeformableAttnFunction
 from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch # 使用pytorch版本， cuda算子在部分机器上编译出问题
 from mmdet.models.utils import LearnedPositionalEncoding
+from opencood.models.sub_modules.optical_flow import FlowPred
 
 # SelfAttn 和 CrossAttn 可以通用
 class DeforAttn(nn.Module):
@@ -219,6 +220,13 @@ class DeforEncoder(nn.Module):
         
         self.feature_embeds = nn.Parameter(
             torch.Tensor(self.max_num_features, self.embed_dims))
+        
+        if "calibrate" in model_cfg:
+            self.calibrate = model_cfg["calibrate"]
+        else:
+            self.calibrate = False
+        if self.calibrate:
+            self.flow_pred = FlowPred(model_cfg["flow_pred_max_iter"], model_cfg["embed_dims"])
 
     
     @staticmethod
@@ -258,7 +266,7 @@ class DeforEncoder(nn.Module):
             )
             ref_y = ref_y.reshape(-1)[None] / H
             ref_x = ref_x.reshape(-1)[None] / W
-            ref_2d = torch.stack((ref_x, ref_y), -1)
+            ref_2d = torch.stack((ref_x, ref_y), -1)  # 先w, 再H, 后面有修正
             ref_2d = ref_2d.repeat(bs, 1, 1).unsqueeze(2)
             return ref_2d
     
@@ -291,11 +299,18 @@ class DeforEncoder(nn.Module):
             i = 0  # ego
             xx = warp_affine_simple(xx, t_matrix[i, :, :, :], (H, W))
 
-            xx += self.feature_embeds[:N, :, None, None]  # [N, C, H, W] + [N, C]-> [N, C, 1, 1]
-
             ref_2d = self.get_reference_points(
                 H, W, dim='2d', bs=1, device=split_x[0].device, dtype=split_x[0].dtype)
-            ref_2d = ref_2d.repeat(1, 1, N,1) # (1, H*W, N, 2)
+    
+            # 在这里加上校准
+            if self.calibrate and N > 1:
+                coord_predictions = self.flow_pred(xx, ref_2d[:, :, 0, :])  # 注意N在flow_pred中是S
+                ref_2d_ = coord_predictions[-1].permute(0,2,1,3)[:, :, 1:, :] # [B, N, H*W, 2] -> [B, H*W, N, 2] # 
+                ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
+            else:
+                ref_2d = ref_2d.repeat(1, 1, N,1) # (1, H*W, N, 2)
+
+            xx += self.feature_embeds[:N, :, None, None]  # [N, C, H, W] + [N, C]-> [N, C, 1, 1]
 
             spatial_shapes = [(H, W)] * N  # the values has two levels with the same shape
             spatial_shapes = torch.as_tensor(
@@ -311,6 +326,9 @@ class DeforEncoder(nn.Module):
             bev_queries = bev_queries.permute(0, 2, 1).view(1, C, H, W)  # 就是这个问题，其他的不行也是因为我没有permute
             out.append(bev_queries)
        
-        return torch.cat(out, dim=0)
+        if self.calibrate:
+            return torch.cat(out, dim=0), coord_predictions # [B, S, N, 2] 大小的tensor list
+        else:
+            return torch.cat(out, dim=0)
 
     

@@ -62,7 +62,7 @@ class DAIRV2XBaseDataset(Dataset):
         self.root_dir = params['data_dir']
 
         self.split_info = read_json(split_dir)
-        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info.json'))
+        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info_with_delay.json'))
         self.co_data = OrderedDict()
         for frame_info in co_datainfo:
             veh_frame_id = frame_info['vehicle_image_path'].split("/")[-1].replace(".jpg", "")  # 使用vehicle作为帧的ID
@@ -71,6 +71,11 @@ class DAIRV2XBaseDataset(Dataset):
         if "noise_setting" not in self.params:
             self.params['noise_setting'] = OrderedDict()
             self.params['noise_setting']['add_noise'] = False
+        
+        if "time_delay" in self.params:
+            self.max_time_delay = params["time_delay"] # can only be [0, 1, 2, 3, 4, 5]
+        else:
+            self.max_time_delay = 0
     
     def reinitialize(self):
         pass
@@ -136,11 +141,16 @@ class DAIRV2XBaseDataset(Dataset):
             data[1]['params']['camera0']['intrinsic'] = load_intrinsic_DAIR_V2X( \
                                             read_json(os.path.join(self.root_dir, 'infrastructure-side/calib/camera_intrinsic/'+str(inf_frame_id)+'.json')))
 
-
+ 
         if self.load_lidar_file or self.visualize:
             data[0]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["vehicle_pointcloud_path"]))
-            data[1]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["infrastructure_pointcloud_path"]))
-
+            time_index = self.frame_select(frame_info)
+            if time_index == 0:
+                data[1]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["infrastructure_pointcloud_path"]))
+            else:
+                data[1]['lidar_np'], _ = \
+                    pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["previous_inf_"+str(time_index)][0]))
+        
 
         # Label for single side； 路端是data[1], data[1]['params']['vehicles_single_all']是路端的标签，只是这里统一用了key
         data[0]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
@@ -154,6 +164,30 @@ class DAIRV2XBaseDataset(Dataset):
 
 
         return data
+    
+    def frame_select(self, frame_info):
+        # 只选，不; 返回一个index, 保证一定有
+        def is_frame_exits(index):
+            if index == 0:
+                return True
+            if frame_info["previous_inf_"+str(index)] is not None:
+                return True
+            return False
+        
+        if self.train:
+            # 训练时随机选择 [0, max_time_delay]
+            while True:
+                time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
+                if is_frame_exits(time_index):
+                    return time_index
+                else:
+                    continue   
+        else:
+            # 测试时，选择max_time_delay, 没有就再找， 验证应该验证所有的
+            for time_index in range( self.max_time_delay, -1, -1):
+                if is_frame_exits(time_index):
+                    return time_index
+    
 
 
     def __len__(self):

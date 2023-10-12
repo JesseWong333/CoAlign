@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Author: Yifan Lu
+# Author: Yifan Lu, modified by Junjie Wang
 # Add direction classification loss
 # The originally point_pillar_loss.py, can not determine if the box heading is opposite to the GT.
 
@@ -30,6 +30,7 @@ class PointPillarLoss(nn.Module):
         else:
             self.iou = None
         
+        self.calibrate = args['calibrate']
         self.loss_dict = {}
 
     def forward(self, output_dict, target_dict, suffix=""):
@@ -92,6 +93,10 @@ class PointPillarLoss(nn.Module):
             total_loss += dir_loss
             self.loss_dict.update({'dir_loss': dir_loss.item()})
 
+        ######### calibrate loss #########
+        if self.calibrate:
+            coords_pred = output_dict["calibrate"]
+            pass
 
         ######## IoU ###########
         if self.iou:
@@ -242,3 +247,20 @@ def sigmoid_focal_loss(preds, targets, weights=None, **kwargs):
     if weights is not None:
         loss *= weights
     return loss
+
+def sequence_loss(flow_preds, flow_gt, gamma=0.8):
+    """ Loss function defined over sequence of flow predictions 
+        flow_preds: [B, S, N, 2] 的list
+    """
+    B, S, N, D = flow_gt.shape
+    assert(D==2)
+    n_predictions = len(flow_preds)    
+    flow_loss = 0.0
+    for i in range(n_predictions):
+        i_weight = gamma**(n_predictions - i - 1)
+        flow_pred = flow_preds[i]#[:,:,0:1]
+        i_loss = (flow_pred - flow_gt).abs() # B, S, N, 2
+        i_loss = torch.mean(i_loss, dim=3) # B, S, N
+        flow_loss += i_weight * i_loss
+    flow_loss = flow_loss/n_predictions
+    return flow_loss
