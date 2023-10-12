@@ -200,6 +200,8 @@ def main():
         fusion_method = opt.fusion_method
         if 'noise_setting' in hypes and hypes['noise_setting']['add_noise']:
             cmd = f"python opencood/tools/inference_w_noise.py --model_dir {saved_path} --fusion_method {fusion_method}"
+        if 'time_delay' in hypes and hypes['time_delay'] > 0:
+            cmd = f"python opencood/tools/inference_w_delay.py --model_dir {saved_path} --fusion_method {fusion_method}"
         else:
             cmd = f"python opencood/tools/inference.py --model_dir {saved_path} --fusion_method {fusion_method}"
         print(f"Running command: {cmd}")
