@@ -177,7 +177,11 @@ class DAIRV2XBaseDataset(Dataset):
         if self.train:
             # 训练时随机选择 [0, max_time_delay]
             while True:
-                time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
+                # time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
+                time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2
+                if time_index > 5:
+                    time_index = 5
+
                 if is_frame_exits(time_index):
                     return time_index
                 else:

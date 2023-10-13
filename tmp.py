@@ -126,38 +126,42 @@
 #         print(np.array(object["world_8_points"]))
 #         pass
 
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
+# import numpy as np
+# import matplotlib
+# import matplotlib.pyplot as plt
 
-def trans_rotate(x, y, px, py, beta):
-    beta = np.deg2rad(beta)
-    T = [[np.cos(beta), -np.sin(beta), px*(1 - np.cos(beta)) + py*np.sin(beta)],
-         [np.sin(beta),  np.cos(beta), py*(1 - np.cos(beta)) - px*np.sin(beta)],
-         [0           ,  0           , 1                                      ]]
-    T = np.array(T)
-    P = np.array([x, y, [1]*x.size])  # x: [(N, ) y:(N,) [1,1...1]]
-    return np.dot(T, P)
+# def trans_rotate(x, y, px, py, beta):
+#     beta = np.deg2rad(beta)
+#     T = [[np.cos(beta), -np.sin(beta), px*(1 - np.cos(beta)) + py*np.sin(beta)],
+#          [np.sin(beta),  np.cos(beta), py*(1 - np.cos(beta)) - px*np.sin(beta)],
+#          [0           ,  0           , 1                                      ]]
+#     T = np.array(T)
+#     P = np.array([x, y, [1]*x.size])  # x: [(N, ) y:(N,) [1,1...1]]
+#     return np.dot(T, P)
 
-fig, ax = plt.subplots(1, 4)
+# fig, ax = plt.subplots(1, 4)
 
-R_ = [0, 225, 40, -10]
-P_ = [[0, 0], [0, 0], [0.5, -0.5], [1.1, 1.1]]
+# R_ = [0, 225, 40, -10]
+# P_ = [[0, 0], [0, 0], [0.5, -0.5], [1.1, 1.1]]
 
-X, Y = np.mgrid[0:1:5j, 0:1:5j]
-x, y = X.ravel(), Y.ravel()
+# X, Y = np.mgrid[0:1:5j, 0:1:5j]
+# x, y = X.ravel(), Y.ravel()
 
-for i in range(4):
-    beta = R_[i]; px, py = P_[i]
-    x_, y_, _ = trans_rotate(x, y, px, py, beta)
-    ax[i].scatter(x_, y_)
-    ax[i].scatter(px, py)
-    ax[i].set_title(r'$\beta={0}°$ , $p_x={1:.2f}$ , $p_y={2:.2f}$'.format(beta, px, py))
+# for i in range(4):
+#     beta = R_[i]; px, py = P_[i]
+#     x_, y_, _ = trans_rotate(x, y, px, py, beta)
+#     ax[i].scatter(x_, y_)
+#     ax[i].scatter(px, py)
+#     ax[i].set_title(r'$\beta={0}°$ , $p_x={1:.2f}$ , $p_y={2:.2f}$'.format(beta, px, py))
     
-    ax[i].set_xlim([-2, 2])
-    ax[i].set_ylim([-2, 2])
-    ax[i].grid(alpha=0.5)
-    ax[i].axhline(y=0, color='k')
-    ax[i].axvline(x=0, color='k')
+#     ax[i].set_xlim([-2, 2])
+#     ax[i].set_ylim([-2, 2])
+#     ax[i].grid(alpha=0.5)
+#     ax[i].axhline(y=0, color='k')
+#     ax[i].axvline(x=0, color='k')
 
-plt.show()
+# plt.show()
+
+import numpy as np
+for i in range(100):
+    print(np.floor(np.random.exponential(scale=2.0)).astype(np.int32))
