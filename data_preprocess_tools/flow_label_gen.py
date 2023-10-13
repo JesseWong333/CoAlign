@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 # bev_h: 100 一共就标记这个多个点。 100 * 252 *2 矩阵， 每个位置记录偏移(x, y)
 # bev_w: 252
-# 一个格子1m?
+# 一个格子1.25m?
 # 
 data_dir = "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
 
@@ -122,7 +122,7 @@ def read_GT(inf_frame_id):
     label_l = read_json(json_file)
     objects = []
     for object in label_l:
-        if object["3d_dimensions"]['w'] < 1 or object["3d_dimensions"]['l'] < 1:  # 这里提前过滤了
+        if object["3d_dimensions"]['w'] < 1 or object["3d_dimensions"]['l'] < 1:  # 必须要过滤，小与1的物体，中间没有点， GT 为1m， bev格子1.25
             continue
         world_8_points = get_3d_8points(object)
         objects.append(np.asarray(world_8_points))  # inf标签里面比没有8个点
@@ -352,7 +352,7 @@ def label_flow(data, bev_shape=[100, 252]):
                                     method='bev',
                                     left_hand=False)
     images = []
-    for i in range(5):
+    for i in range(len(previous_GT)):
         target = {}
         target["gt_box_tensor"] = torch.from_numpy(previous_GT_projected[i])
         # vis_save_path =  os.path.join('tmp', 'bev_{}_{}.png'.format(anchor_id, i+1))
@@ -414,13 +414,13 @@ if __name__ == '__main__':
     for data in tqdm(co_datainfo):
         # start_time = time.time()
         # 调查追踪问题
-        # if data['infrastructure_pointcloud_path'].split('/')[-1].replace('.pcd', '') != '000086':
+        # if data['infrastructure_pointcloud_path'].split('/')[-1].replace('.pcd', '') != '005095':
         #     continue
         # offset_maps, points_masks = label_flow(data)
         try:
             offset_maps, points_masks = label_flow(data)
         except:
-            print(data['vehicle_pointcloud_path'])
+            print(data['infrastructure_pointcloud_path']) # 可视化都是按照inf端来判断的
             continue
         
         if len(offset_maps) > 0:
