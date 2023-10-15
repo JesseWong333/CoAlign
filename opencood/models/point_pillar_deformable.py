@@ -45,11 +45,20 @@ class PointPillarDeformable(nn.Module):
         lidar_pose = data_dict['lidar_pose']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
 
+        if 'offset' in data_dict:
+            offset = data_dict['offset']
+            offset_mask = data_dict['offset_mask']
+        else:
+            offset = None
+            offset_mask = None
+
         batch_dict = {'voxel_features': voxel_features,
                       'voxel_coords': voxel_coords,
                       'voxel_num_points': voxel_num_points,
                       'record_len': record_len,
-                      'pairwise_t_matrix': pairwise_t_matrix}
+                      'pairwise_t_matrix': pairwise_t_matrix,
+                      'offset': offset,
+                      'offset_mask': offset_mask}
             
         batch_dict = self.pillar_vfe(batch_dict)
         batch_dict = self.scatter(batch_dict)

@@ -81,6 +81,7 @@ class DeforAttn(nn.Module):
                                                 self.max_num_levels,
                                                 self.num_points)
         attention_weights = attention_weights[:, :, :, :N, :]
+         
         attention_weights = attention_weights.view(bs, num_query, self.num_heads, N*self.num_points)
         attention_weights = attention_weights.softmax(-1)
         attention_weights = attention_weights.view(bs, num_query,
@@ -275,7 +276,7 @@ class DeforEncoder(nn.Module):
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
     
-    def forward(self, x, record_len, pairwise_t_matrix):
+    def forward(self, x, record_len, pairwise_t_matrix, offsets, offset_masks):
         # 这里生成ref points
         # 可以融合多个级别,不同大小的feature map, 这里只取最后的一个
            
@@ -302,13 +303,25 @@ class DeforEncoder(nn.Module):
             ref_2d = self.get_reference_points(
                 H, W, dim='2d', bs=1, device=split_x[0].device, dtype=split_x[0].dtype)
     
-            # 在这里加上校准
-            if self.calibrate and N > 1:
-                coord_predictions = self.flow_pred(xx, ref_2d[:, :, 0, :])  # 注意N在flow_pred中是S
-                ref_2d_ = coord_predictions[-1].permute(0,2,1,3)[:, :, 1:, :] # [B, N, H*W, 2] -> [B, H*W, N, 2] # 
+            # 预测参考点
+            # if self.calibrate and N > 1:
+            #     # 预测参考点
+            #     coord_predictions = self.flow_pred(xx, ref_2d[:, :, 0, :])  # 注意N在flow_pred中是S
+            #     ref_2d_ = coord_predictions[-1].permute(0,2,1,3)[:, :, 1:, :] # [B, N, H*W, 2] -> [B, H*W, N, 2] # 
+            #     ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
+            # else:
+            #     ref_2d = ref_2d.repeat(1, 1, N,1) # (1, H*W, N, 2)
+
+            # 使用真值参考点 offsets = transformed_points - points
+            if offsets is not None and offset_masks is not None and N > 1:
+                offset = offsets[b].view(self.bev_h*self.bev_w, 2).unsqueeze(0).unsqueeze(2)  # [1, H*W, 1, 2]
+                offset_mask = offset_masks[b].view(self.bev_h*self.bev_w) # [H*W] 为True的地方遮掩
+                offset_mask_index = offset_mask.nonzero().squeeze(-1)
+                ref_2d_ = ref_2d + offset
+                ref_2d_[:, offset_mask_index, :, :] = -1e6
                 ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
             else:
-                ref_2d = ref_2d.repeat(1, 1, N,1) # (1, H*W, N, 2)
+                ref_2d = ref_2d.repeat(1, 1, N,1)
 
             xx += self.feature_embeds[:N, :, None, None]  # [N, C, H, W] + [N, C]-> [N, C, 1, 1]
 

@@ -435,6 +435,9 @@ def getIntermediateFusionDataset(cls):
             processed_data_dict['ego'].update({'sample_idx': idx,
                                                 'cav_id_list': cav_id_list})
 
+            if "offset" in ego_cav_base["params"]:
+                processed_data_dict['ego'].update({"offset": ego_cav_base["params"]["offset"],
+                                                   "offset_mask": ego_cav_base["params"]["mask"] })
             return processed_data_dict
 
 
@@ -456,6 +459,9 @@ def getIntermediateFusionDataset(cls):
 
             # pairwise transformation matrix
             pairwise_t_matrix_list = []
+
+            offset_list = []
+            offset_mask_list = []
 
             # disconet
             teacher_processed_lidar_list = []
@@ -483,6 +489,10 @@ def getIntermediateFusionDataset(cls):
                 record_len.append(ego_dict['cav_num'])
                 label_dict_list.append(ego_dict['label_dict'])
                 pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
+
+                if  "offset" in ego_dict:
+                    offset_list.append(np.expand_dims(ego_dict["offset"], axis=0))
+                    offset_mask_list.append(np.expand_dims(ego_dict["offset_mask"], axis=0))
 
                 if self.visualize:
                     origin_lidar.append(ego_dict['origin_lidar'])
@@ -520,6 +530,9 @@ def getIntermediateFusionDataset(cls):
             label_torch_dict = \
                 self.post_processor.collate_batch(label_dict_list)
 
+            if len(offset_list) > 0:
+                offsets = torch.from_numpy(np.concatenate(offset_list, axis=0))
+                offset_masks = torch.from_numpy(np.concatenate(offset_mask_list, axis=0))
             # for centerpoint
             label_torch_dict.update({'object_bbx_center': object_bbx_center,
                                      'object_bbx_mask': object_bbx_mask})
@@ -544,6 +557,9 @@ def getIntermediateFusionDataset(cls):
                                     'lidar_pose': lidar_pose,
                                     'anchor_box': self.anchor_box_torch})
 
+            if len(offset_list) > 0:
+                output_dict['ego'].update({'offset': offsets,                   
+                                           'offset_mask': offset_masks})
 
             if self.visualize:
                 origin_lidar = \

@@ -158,7 +158,7 @@ class DeforBEVBackbone(nn.Module):
         if len(self.deblocks) > len(self.blocks):
             x = self.deblocks[-1](x)
 
-        x = self.defor_encoder(x, record_len, pairwise_t_matrix)
+        x = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
 
         data_dict['spatial_features_2d'] = x
         return data_dict

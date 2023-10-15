@@ -62,7 +62,7 @@ class DAIRV2XBaseDataset(Dataset):
         self.root_dir = params['data_dir']
 
         self.split_info = read_json(split_dir)
-        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info_with_delay.json'))
+        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info_processed.json'))
         self.co_data = OrderedDict()
         for frame_info in co_datainfo:
             veh_frame_id = frame_info['vehicle_image_path'].split("/")[-1].replace(".jpg", "")  # 使用vehicle作为帧的ID
@@ -76,6 +76,17 @@ class DAIRV2XBaseDataset(Dataset):
             self.max_time_delay = params["time_delay"] # can only be [0, 1, 2, 3, 4, 5]
         else:
             self.max_time_delay = 0
+        
+        if "load_offset_map" in self.params:
+            self.load_offset_map = params["load_offset_map"]
+        else:
+            self.load_offset_map = False
+        
+        if "bev_h" in self.params:
+            self.bev_h = self.params["bev_h"]
+
+        if "bev_w" in self.params:
+            self.bev_w = self.params["bev_w"]
     
     def reinitialize(self):
         pass
@@ -145,13 +156,24 @@ class DAIRV2XBaseDataset(Dataset):
         if self.load_lidar_file or self.visualize:
             data[0]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["vehicle_pointcloud_path"]))
             time_index = self.frame_select(frame_info)
+            if self.max_time_delay == 0:
+                time_index = 0
             if time_index == 0:
                 data[1]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["infrastructure_pointcloud_path"]))
             else:
                 data[1]['lidar_np'], _ = \
                     pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["previous_inf_"+str(time_index)][0]))
-        
 
+            if self.load_offset_map:
+                if frame_info["offset"] != '' and frame_info["mask"] != '' and time_index != 0 \
+                    and np.load(os.path.join(self.root_dir,frame_info["offset"])).shape[0] >= time_index:
+                        data[0]['params']["offset"] = np.load(os.path.join(self.root_dir,frame_info["offset"]))[time_index-1]
+                        data[0]['params']["mask"] = np.load(os.path.join(self.root_dir,frame_info["mask"]))[time_index-1]
+                else:
+                    data[0]['params']["offset"] = np.zeros((self.bev_h, self.bev_w, 2), dtype=np.float32) 
+                    data[0]['params']["mask"] = np.full((self.bev_h, self.bev_w), False, dtype=bool)
+
+       
         # Label for single side； 路端是data[1], data[1]['params']['vehicles_single_all']是路端的标签，只是这里统一用了key
         data[0]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
                                 'vehicle-side/label/lidar_backup/{}.json'.format(veh_frame_id)))
@@ -179,8 +201,8 @@ class DAIRV2XBaseDataset(Dataset):
             while True:
                 # time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
                 time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2
-                if time_index > 5:
-                    time_index = 5
+                if time_index > self.max_time_delay:
+                    time_index = self.max_time_delay
 
                 if is_frame_exits(time_index):
                     return time_index
