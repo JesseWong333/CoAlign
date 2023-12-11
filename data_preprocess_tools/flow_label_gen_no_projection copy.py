@@ -298,7 +298,7 @@ def get_offset_maps(points_tracks, n_frame, bev_shape=[100, 252]):
             point_masks[i][ori_points[:,1], ori_points[:,0]] = False
     return offset_maps, point_masks
 
-def filter_point_cloud(pcb_np, pc_range=[-100.8, -40, -3.5, 100.8, 40, 1.5]):
+def filter_point_cloud(pcb_np, pc_range=[-100.8, -40, -1.5, 100.8, 40, 1.5]):
     # -3.5已经比较低了，路端高5m, 人车高1到2m,信息都在
     pcb_filtered = pcb_np[ (pcb_np[:,0] > pc_range[0]) &  (pcb_np[:,0] < pc_range[3]) & (pcb_np[:,1] > pc_range[1]) & (pcb_np[:,1] < pc_range[4]) & (pcb_np[:,2] > pc_range[2]) & (pcb_np[:,2] < pc_range[5])]
     # print("trimed_point{}".format(  (pcb_np.shape[0]-pcb_filtered.shape[0])/pcb_np.shape[0]  ))
@@ -350,7 +350,8 @@ def label_flow(data, bev_shape=[100, 252]):
     veh_novatel2world_path = os.path.join(data_dir,'vehicle-side/calib/novatel_to_world/'+str(veh_frame_id)+'.json')
     system_error_offset= data["system_error_offset"]
     inf_lidar2lidar_r, inf_lidar2lidar_t = trans_lidar_i2v(inf_lidar2world_path, veh_lidar2novatel_path, veh_novatel2world_path, system_error_offset)
-    inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
+    # inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
+    inf2veh_transform = np.identity(4)
     
     # project lidars
     lidar_anchor_projected = box_utils.project_points_by_matrix_torch(lidar_anchor[:, :3], inf2veh_transform)
@@ -427,7 +428,7 @@ def label_flow(data, bev_shape=[100, 252]):
 if __name__ == '__main__':
     co_datainfo = read_json(os.path.join(data_dir, 'cooperative/data_info_with_delay.json'))
     
-    save_dir = 'offset_maps_update'
+    save_dir = 'offset_maps_no_projection_tmp'
     if not os.path.exists(os.path.join(data_dir, save_dir)):
         os.mkdir(os.path.join(data_dir, save_dir))
 

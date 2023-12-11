@@ -38,7 +38,7 @@ def summ_traj2ds_on_rgbs(trajs, rgbs, valids=None, frame_ids=None, only_return=F
             if str(j) + '_' + str(i) + '_0' in trajs:
                 traj_one_point = []
                 traj_one_point.append( (trajs[str(j) + '_' + str(i) + '_0'] * scale).astype(int) )
-                for k in range(5): # 最多5帧
+                for k in range(6): # 最多11帧
                     if str(j) + '_' + str(i) + '_' + str(k+1) in trajs:
                         traj_one_point.append( (trajs[str(j) + '_' + str(i) + '_' +str(k+1)] * scale).astype(int) )
                     else:

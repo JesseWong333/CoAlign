@@ -350,7 +350,8 @@ def label_flow(data, bev_shape=[100, 252]):
     veh_novatel2world_path = os.path.join(data_dir,'vehicle-side/calib/novatel_to_world/'+str(veh_frame_id)+'.json')
     system_error_offset= data["system_error_offset"]
     inf_lidar2lidar_r, inf_lidar2lidar_t = trans_lidar_i2v(inf_lidar2world_path, veh_lidar2novatel_path, veh_novatel2world_path, system_error_offset)
-    inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
+    # inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
+    inf2veh_transform = np.identity(4)
     
     # project lidars
     lidar_anchor_projected = box_utils.project_points_by_matrix_torch(lidar_anchor[:, :3], inf2veh_transform)
@@ -427,7 +428,7 @@ def label_flow(data, bev_shape=[100, 252]):
 if __name__ == '__main__':
     co_datainfo = read_json(os.path.join(data_dir, 'cooperative/data_info_with_delay.json'))
     
-    save_dir = 'offset_maps_update'
+    save_dir = 'offset_maps_no_projection_tmp'
     if not os.path.exists(os.path.join(data_dir, save_dir)):
         os.mkdir(os.path.join(data_dir, save_dir))
 

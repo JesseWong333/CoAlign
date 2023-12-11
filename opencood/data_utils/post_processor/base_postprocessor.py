@@ -355,7 +355,7 @@ class BasePostprocessor(object):
         filter_range = self.params['anchor_args']['cav_lidar_range']
 
 
-        box_utils.project_world_objects_dairv2x(tmp_object_list,  # 世界坐标系下的box投影到各自的坐标系 （只对ego有效，其他端的标签是空的）
+        box_utils.project_world_objects_dairv2x(tmp_object_list, 
                                         output_dict,
                                         reference_lidar_pose,
                                         filter_range,

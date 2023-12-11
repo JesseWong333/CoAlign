@@ -268,7 +268,7 @@ class DeforEncoder(nn.Module):
             )
             ref_y = ref_y.reshape(-1)[None] / H
             ref_x = ref_x.reshape(-1)[None] / W
-            ref_2d = torch.stack((ref_x, ref_y), -1)  # 先w, 再H, 后面有修正
+            ref_2d = torch.stack((ref_x, ref_y), -1)  # 先w, 再H
             ref_2d = ref_2d.repeat(bs, 1, 1).unsqueeze(2)
             return ref_2d
     

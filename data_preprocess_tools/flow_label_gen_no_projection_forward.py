@@ -187,7 +187,8 @@ def estimate_transform(boxes):
     transformations = []
     for i in range(1, len(boxes)):
          if boxes[i] is not None:
-            transformations.append(getTransform(boxes[0], boxes[i]))
+            # transformations.append(getTransform(boxes[0], boxes[i]))
+            transformations.append(getTransform(boxes[i], boxes[0])) 
     return transformations
 
 # def filter_points(points, bev_shape=[100, 252]):
@@ -220,19 +221,34 @@ def get_point_transformation(rects, transformations, bev_shape=[100, 252]):
     # 找到anchor矩形框的所有点， 投影到之前的帧
     # rects: 6, 4, 2
     # input: a list of transformation, transformations少一个
-    points_ = getPointsInQuad(rects[0])
+
+    # points_ = getPointsInQuad(rects[0])
+    # point_trans = []
+    # for i in range(len(transformations)):
+    #     points = points_.copy()
+    #     transfomed_points = applyTransform(points, transformations[i]) # N,2
+    #     # 转换为以左上角为原点的坐标
+    #     points[:, 1] = -(points[:, 1] - bev_shape[0])  #
+    #     transfomed_points[:, 1] = -(transfomed_points[:, 1] - bev_shape[0])
+    #     # filter out points
+    #     transform_tuple = np.concatenate([points, transfomed_points], axis=1) # 原坐标 -> 新坐标
+    #     transform_tuple = filter_points(transform_tuple)
+    #     if transform_tuple.shape[0] > 0:
+    #         point_trans.append(transform_tuple)
+
+    # forward projection
     point_trans = []
     for i in range(len(transformations)):
-        points = points_.copy()
-        transfomed_points = applyTransform(points, transformations[i]) # N,2
-        # 转换为以左上角为原点的坐标
-        points[:, 1] = -(points[:, 1] - bev_shape[0])  #
+        points = getPointsInQuad(rects[i+1])
+        transfomed_points = applyTransform(points, transformations[i])
+
+        points[:, 1] = -(points[:, 1] - bev_shape[0])
         transfomed_points[:, 1] = -(transfomed_points[:, 1] - bev_shape[0])
-        # filter out points
         transform_tuple = np.concatenate([points, transfomed_points], axis=1) # 原坐标 -> 新坐标
         transform_tuple = filter_points(transform_tuple)
         if transform_tuple.shape[0] > 0:
             point_trans.append(transform_tuple)
+
     return point_trans
 
 def scale_boxes(boxes, pc_range=[-100.8, -40, -3.5, 100.8, 40, 1.5], bev_shape=[100, 252] ):
@@ -350,7 +366,8 @@ def label_flow(data, bev_shape=[100, 252]):
     veh_novatel2world_path = os.path.join(data_dir,'vehicle-side/calib/novatel_to_world/'+str(veh_frame_id)+'.json')
     system_error_offset= data["system_error_offset"]
     inf_lidar2lidar_r, inf_lidar2lidar_t = trans_lidar_i2v(inf_lidar2world_path, veh_lidar2novatel_path, veh_novatel2world_path, system_error_offset)
-    inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
+    # inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
+    inf2veh_transform = np.identity(4)
     
     # project lidars
     lidar_anchor_projected = box_utils.project_points_by_matrix_torch(lidar_anchor[:, :3], inf2veh_transform)
@@ -361,28 +378,28 @@ def label_flow(data, bev_shape=[100, 252]):
     previous_GT_projected = [box_utils.project_box3d(GT, inf2veh_transform) for GT in previous_GT]
 
     # vis to box
-    target = {}
-    target["gt_box_tensor"] = torch.from_numpy(anchor_GT_projected)
-    vis_save_path =  os.path.join('tmp', 'bev_{}_{}.gif'.format(anchor_id, "box"))
+    # target = {}
+    # target["gt_box_tensor"] = torch.from_numpy(anchor_GT_projected)
+    # vis_save_path =  os.path.join('tmp', 'bev_{}_{}.gif'.format(anchor_id, "box"))
     
-    images = []
-    anchor_image = custom_vis.visualize(target, torch.from_numpy(lidar_anchor_projected),
-                                    [-100.8, -40, -3.5, 100.8, 40, 1.5],
-                                    None,
-                                    method='bev',
-                                    left_hand=False)
-    images = []
-    for i in range(len(previous_GT)):
-        target = {}
-        target["gt_box_tensor"] = torch.from_numpy(previous_GT_projected[i])
-        # vis_save_path =  os.path.join('tmp', 'bev_{}_{}.png'.format(anchor_id, i+1))
-        img = custom_vis.visualize(target, torch.from_numpy(lidar_previous_projected[i]),
-                                        [-100.8, -40, -3.5, 100.8, 40, 1.5],
-                                        None,
-                                        method='bev',
-                                        left_hand=False)   
-        images.append(img)
-    anchor_image.save(vis_save_path, format='gif', save_all=True, append_images=images, duration=500,loop=0)
+    # images = []
+    # anchor_image = custom_vis.visualize(target, torch.from_numpy(lidar_anchor_projected),
+    #                                 [-100.8, -40, -3.5, 100.8, 40, 1.5],
+    #                                 None,
+    #                                 method='bev',
+    #                                 left_hand=False)
+    # images = []
+    # for i in range(len(previous_GT)):
+    #     target = {}
+    #     target["gt_box_tensor"] = torch.from_numpy(previous_GT_projected[i])
+    #     # vis_save_path =  os.path.join('tmp', 'bev_{}_{}.png'.format(anchor_id, i+1))
+    #     img = custom_vis.visualize(target, torch.from_numpy(lidar_previous_projected[i]),
+    #                                     [-100.8, -40, -3.5, 100.8, 40, 1.5],
+    #                                     None,
+    #                                     method='bev',
+    #                                     left_hand=False)   
+    #     images.append(img)
+    # anchor_image.save(vis_save_path, format='gif', save_all=True, append_images=images, duration=500,loop=0)
 
 
     # only use the 2D info
@@ -409,8 +426,8 @@ def label_flow(data, bev_shape=[100, 252]):
             points_tracks.append(point_track)
 
     # 这里开始visualize
-    vis_save_path =  os.path.join('tmp', 'bev_{}_{}.gif'.format(anchor_id, "flow"))
-    vis_point_track(points_tracks, [lidar_anchor_projected] + lidar_previous_projected, vis_save_path)
+    # vis_save_path =  os.path.join('tmp', 'bev_{}_{}.gif'.format(anchor_id, "flow"))
+    # vis_point_track(points_tracks, [lidar_anchor_projected] + lidar_previous_projected, vis_save_path)
 
     # convert the tracked points into offsetmaps
     offset_maps, points_masks = get_offset_maps(points_tracks, len(previous_GT))
@@ -427,7 +444,7 @@ def label_flow(data, bev_shape=[100, 252]):
 if __name__ == '__main__':
     co_datainfo = read_json(os.path.join(data_dir, 'cooperative/data_info_with_delay.json'))
     
-    save_dir = 'offset_maps_update'
+    save_dir = 'offset_maps_no_projection_forward'
     if not os.path.exists(os.path.join(data_dir, save_dir)):
         os.mkdir(os.path.join(data_dir, save_dir))
 

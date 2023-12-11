@@ -1,6 +1,6 @@
-# 找到前面多帧的标记 压平，
-# 需要project到ego坐标上去做
-#
+# 对之前的每一帧，生成一个segmentation mask， 只预测segmentation部分的
+# 2023-11-26
+
 import time
 import numpy as np
 import math
@@ -13,6 +13,7 @@ from data_preprocess_tools.twoD_tools import isRectsOverlap, getTransform, getPo
 from opencood.utils import box_utils as box_utils
 import opencood.utils.pcd_utils as pcd_utils
 from tqdm import tqdm
+import cv2
 
 # bev_h: 100 一共就标记这个多个点。 100 * 252 *2 矩阵， 每个位置记录偏移(x, y)
 # bev_w: 252
@@ -204,15 +205,15 @@ def estimate_transform(boxes):
 #     else:
 #         return None
 
-def filter_points(points, bev_shape=[100, 252]):
+def filter_points_2D(points, bev_shape=[100, 252]):
     # x_boolean = (points[:, 2] <= (bev_shape[1]-1)) & (points[:, 2] <= (bev_shape[1]-1)) & (points[:, 2] >= 0)
     # y_boolean = np.logical_and(points[:, 3] <= bev_shape[0]-1,  points[:, 3] >= 0)
     # xy_boolean = np.logical_and(x_boolean, y_boolean)
     boolean_1 = (points[:, 0] >= 0) & (points[:, 0] <= (bev_shape[1]-1))
     boolean_2 = (points[:, 1] >= 0) & (points[:, 1] <= (bev_shape[0]-1))
-    boolean_3 = (points[:, 2] >= 0) & (points[:, 2] <= (bev_shape[1]-1))
-    boolean_4 = (points[:, 3] >= 0) & (points[:, 3] <= (bev_shape[0]-1))
-    boolean_all = boolean_1 & boolean_2 & boolean_3 & boolean_4
+    # boolean_3 = (points[:, 2] >= 0) & (points[:, 2] <= (bev_shape[1]-1))
+    # boolean_4 = (points[:, 3] >= 0) & (points[:, 3] <= (bev_shape[0]-1))
+    boolean_all = boolean_1 & boolean_2
     points =points[boolean_all, :]
     return points
     
@@ -304,6 +305,25 @@ def filter_point_cloud(pcb_np, pc_range=[-100.8, -40, -3.5, 100.8, 40, 1.5]):
     # print("trimed_point{}".format(  (pcb_np.shape[0]-pcb_filtered.shape[0])/pcb_np.shape[0]  ))
     return pcb_filtered
 
+def get_segmentation_map(rects, bev_shape=[100, 252]):
+    # 生成segmentation map, 前景背景的生成
+    segmentation = np.zeros((bev_shape[0], bev_shape[1]), dtype=np.int8)
+    if rects.shape[0] == 0:
+        return segmentation
+    points = []
+    for rect in rects:
+        points.append(getPointsInQuad(rect))  # [x, y]
+    points = np.concatenate(points, axis=0)
+    points[:, 1] = -(points[:, 1] - bev_shape[0]) # 转为左上角为原点坐标
+    points = filter_points_2D(points)
+    segmentation[points[:, 1], points[:, 0]] = 1
+    return segmentation
+
+def vis_segmentation_map(segmentation_map, path):
+    segmentation_map = segmentation_map * 255
+    vis_target = cv2.resize(segmentation_map, (0, 0), fx=8, fy=8, interpolation=cv2.INTER_NEAREST)
+    cv2.imwrite(path, vis_target)
+
 def label_flow(data, bev_shape=[100, 252]):
     # 
     # 对于这样的追踪问题，点追踪，不处理新加入的点，但是处理出去的点； todo: 暂时不处理
@@ -325,25 +345,6 @@ def label_flow(data, bev_shape=[100, 252]):
     anchor_GT = read_GT(anchor_id)
     previous_GT = [read_GT(previous_id) for previous_id in previous_ids]  # inf雷达坐标的，投影到车端
 
-    # 主要是由于corner case； 有几帧，我就返回几个map
-    # anchor为空, 后面的全部不追踪， previous[1]为0， previous[2]， previous[3]不追踪
-    if anchor_GT.shape[0] == 0:
-        # 全部过滤掉了
-        offset_maps = [ np.zeros((bev_shape[0], bev_shape[1], 2), dtype=np.float32) for _ in range(len(previous_GT))]
-        points_masks = [np.full((bev_shape[0], bev_shape[1]), False, dtype=bool) for _ in range(len(previous_GT))]
-        return offset_maps, points_masks
-    
-    index_i = len(previous_GT)
-    for i, GT in enumerate(previous_GT):
-        if GT.shape[0] == 0:
-            index_i = i
-            break
-
-    offset_maps_left = [ np.zeros((bev_shape[0], bev_shape[1], 2), dtype=np.float32) for _ in range(len(previous_GT)-index_i)]
-    points_masks_left = [ np.full((bev_shape[0], bev_shape[1]), False, dtype=bool) for _ in range(len(previous_GT)-index_i)]
-    previous_GT = previous_GT[:index_i]
-    # --------------------------------------------------
-    
     # create transform
     inf_lidar2world_path = os.path.join(data_dir,'infrastructure-side/calib/virtuallidar_to_world/'+str(anchor_id)+'.json')
     veh_lidar2novatel_path = os.path.join(data_dir,'vehicle-side/calib/lidar_to_novatel/'+str(veh_frame_id)+'.json')
@@ -356,34 +357,13 @@ def label_flow(data, bev_shape=[100, 252]):
     lidar_anchor_projected = box_utils.project_points_by_matrix_torch(lidar_anchor[:, :3], inf2veh_transform)
     lidar_previous_projected = [ box_utils.project_points_by_matrix_torch(lidar[:, :3], inf2veh_transform) for lidar in lidar_l]
 
+    # 有的帧是空的
     # project GT
-    anchor_GT_projected =  box_utils.project_box3d(anchor_GT, inf2veh_transform)
-    previous_GT_projected = [box_utils.project_box3d(GT, inf2veh_transform) for GT in previous_GT]
-
-    # vis to box
-    target = {}
-    target["gt_box_tensor"] = torch.from_numpy(anchor_GT_projected)
-    vis_save_path =  os.path.join('tmp', 'bev_{}_{}.gif'.format(anchor_id, "box"))
-    
-    images = []
-    anchor_image = custom_vis.visualize(target, torch.from_numpy(lidar_anchor_projected),
-                                    [-100.8, -40, -3.5, 100.8, 40, 1.5],
-                                    None,
-                                    method='bev',
-                                    left_hand=False)
-    images = []
-    for i in range(len(previous_GT)):
-        target = {}
-        target["gt_box_tensor"] = torch.from_numpy(previous_GT_projected[i])
-        # vis_save_path =  os.path.join('tmp', 'bev_{}_{}.png'.format(anchor_id, i+1))
-        img = custom_vis.visualize(target, torch.from_numpy(lidar_previous_projected[i]),
-                                        [-100.8, -40, -3.5, 100.8, 40, 1.5],
-                                        None,
-                                        method='bev',
-                                        left_hand=False)   
-        images.append(img)
-    anchor_image.save(vis_save_path, format='gif', save_all=True, append_images=images, duration=500,loop=0)
-
+    if anchor_GT.shape[0] > 0:
+        anchor_GT_projected =  box_utils.project_box3d(anchor_GT, inf2veh_transform)
+    else:
+        anchor_GT_projected = np.zeros((0, 8, 3))
+    previous_GT_projected = [box_utils.project_box3d(GT, inf2veh_transform) if GT.shape[0] > 0 else np.zeros((0, 8, 3)) for GT in previous_GT ]
 
     # only use the 2D info
     anchor_GT_projected = anchor_GT_projected[:,:4,:2]
@@ -392,74 +372,43 @@ def label_flow(data, bev_shape=[100, 252]):
     # scale the boxes,  pc_range [-100.8, -40, -3.5, 100.8, 40, 1.5] -> BEV [100, 252]; 图像从左下角记录; 稍微放大
     anchor_GT_projected = scale_boxes(anchor_GT_projected)
     previous_GT_projected = [scale_boxes(GT) for GT in previous_GT_projected]
+
+    anchor_segmentatin = get_segmentation_map(anchor_GT_projected)
+    previous_segmentation = [ get_segmentation_map(previous_GT) for previous_GT in previous_GT_projected]
+    vis_save_path =  os.path.join('tmp', 'bev_{}_{}.png'.format(anchor_id, "seg"))
+    vis_segmentation_map(anchor_segmentatin, vis_save_path)
     
-    track_results = track_boxes(anchor_GT_projected, previous_GT_projected) # [ [(4,2)*6],..., ]
+    return [anchor_segmentatin] + previous_segmentation
     
-    # estimate_transform
-    transformations = []  # 每元素表示， 一个box在不同时刻
-    for track_result in track_results:
-        transformations.append(estimate_transform(track_result))
-
-    # 得到每个rect中的点，并应用transformations; 在这里将点转换为了左上坐标, 过滤了坐标
-    points_tracks = []  # 每个元素，一个box的所有点的转换
-    for rects, transformation in zip(track_results, transformations):
-        # 这个rects可能不在range, 此时返回为空
-        point_track = get_point_transformation(rects, transformation)
-        if len(point_track) > 0:
-            points_tracks.append(point_track)
-
-    # 这里开始visualize
-    vis_save_path =  os.path.join('tmp', 'bev_{}_{}.gif'.format(anchor_id, "flow"))
-    vis_point_track(points_tracks, [lidar_anchor_projected] + lidar_previous_projected, vis_save_path)
-
-    # convert the tracked points into offsetmaps
-    offset_maps, points_masks = get_offset_maps(points_tracks, len(previous_GT))
-    
-    # vis offset maps
-    # imgs = custom_vis.vis_offset_maps(offset_maps, points_masks, lidar_previous_projected)
-    # import cv2
-    # for i, img in enumerate(imgs):
-    #     vis_save_path = os.path.join('tmp', 'bev_offset{}_{}.png'.format(anchor_id, i+1))
-    #     cv2.imwrite(vis_save_path,img)
-
-    return offset_maps + offset_maps_left, points_masks + points_masks_left
    
 if __name__ == '__main__':
-    co_datainfo = read_json(os.path.join(data_dir, 'cooperative/data_info_with_delay.json'))
+    co_datainfo = read_json(os.path.join(data_dir, 'cooperative/data_info_processed_updated.json'))
     
-    save_dir = 'offset_maps_update'
+    save_dir = 'segmentation_maps'
     if not os.path.exists(os.path.join(data_dir, save_dir)):
         os.mkdir(os.path.join(data_dir, save_dir))
 
     for data in tqdm(co_datainfo):
-        # start_time = time.time()
-        # 调查追踪问题
-        # 006315这个pcd
-        # if data['infrastructure_pointcloud_path'].split('/')[-1].replace('.pcd', '') != '006315':
-        #     continue
-        # offset_maps, points_masks = label_flow(data)
-        try:
-            offset_maps, points_masks = label_flow(data)
-        except:
-            print(data['infrastructure_pointcloud_path']) # 可视化都是按照inf端来判断的
+        if data['infrastructure_pointcloud_path'].split('/')[-1].replace('.pcd', '') == '006315':
             continue
+        segmentation_maps = label_flow(data)
+        # try:
+        #     segmentation_maps = label_flow(data)
+        # except:
+        #     print(data['infrastructure_pointcloud_path']) # 可视化都是按照inf端来判断的
+        #     continue
         
-        if len(offset_maps) > 0:
-            offset_maps = np.concatenate([np.expand_dims(x, axis=0) for x in offset_maps], axis=0)
-            points_masks = np.concatenate([np.expand_dims(x, axis=0) for x in points_masks], axis=0)
+        if len(segmentation_maps) > 0:
+            segmentation_maps = np.concatenate([np.expand_dims(x, axis=0) for x in segmentation_maps], axis=0)
             # print("time for one frame:{}".format(time.time() - start_time)) 
             # 使用vech_frame_id作为key, 并更新json
             veh_frame_id = data['vehicle_pointcloud_path'].split('/')[-1].replace('.pcd', '')
-            save_numpy(os.path.join(data_dir, save_dir, 'offset_'+veh_frame_id+'.npy'), offset_maps)
-            save_numpy(os.path.join(data_dir, save_dir, 'mask_'+veh_frame_id+'.npy'), points_masks)
+            save_numpy(os.path.join(data_dir, save_dir, 'segmentation_'+veh_frame_id+'.npy'), segmentation_maps)
             
             # 增加字段
-            data['offset'] = os.path.join(save_dir, 'offset_'+veh_frame_id+'.npy')
-            data['mask'] = os.path.join(save_dir, 'mask_'+veh_frame_id+'.npy')
+            data['seg'] = os.path.join(save_dir, 'segmentation_'+veh_frame_id+'.npy')
         else:
-            # 此时没有之前的帧
-            data['offset'] = ''
-            data['mask'] = ''
+            data['seg'] = ''
 
-    write_json(os.path.join(data_dir, 'cooperative/data_info_processed_updated.json'), co_datainfo)
+    write_json(os.path.join(data_dir, 'cooperative/data_info_processed_updated_2.json'), co_datainfo)
 

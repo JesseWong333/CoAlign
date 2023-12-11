@@ -32,15 +32,15 @@ def get_all_inf_ids(inf_data_infos):
     return infrastructure_idxs
 
 def generate_flow(co_datainfo, inf_datainfo, split_train, split_val):
-    # find max=5 the history frames; save it back to co_datainfo
+    # find max=10 the history frames; save it back to co_datainfo
     # we dont need to split the co_datainfo data; 
     inf_idx_batch_mappings = idx_batch_mapping(inf_datainfo)  # inf_idx： batch_id
     inf_idxs = get_all_inf_ids(inf_datainfo)
 
     for data_info in co_datainfo:
-        # find max=5 previous frames
+        # find max=10 previous frames
         inf_idx = data_info['infrastructure_pointcloud_path'].split('/')[-1].replace('.pcd', '')
-        for i in range(1, 6):
+        for i in range(1, 11):
             previous_id = str(int(inf_idx) - i).zfill(6)
             if previous_id not in inf_idxs or inf_idx_batch_mappings[previous_id] != inf_idx_batch_mappings[inf_idx]:
                 data_info["previous_inf_" + str(i)] = None

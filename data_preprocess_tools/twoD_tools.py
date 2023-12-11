@@ -11,6 +11,7 @@ import numpy as np
 import math
 import random
 
+Using_GPU = False
 # rect: [4,2] array
 # point: tunple或array
 
@@ -79,11 +80,11 @@ class TwoDTrandform(nn.Module):
         return torch.cat([x_prime.unsqueeze(-1), y_prime.unsqueeze(-1)], dim=-1)
     
     def get_transformation_matrix(self):
-        beta = self.rotation.detach().numpy()[0]
-        px = self.center.numpy()[0]
-        py = self.center.numpy()[1]
-        t_x = self.translation.detach().numpy()[0]
-        t_y = self.translation.detach().numpy()[1]
+        beta = self.rotation.detach().cpu().numpy()[0]
+        px = self.center.cpu().numpy()[0]
+        py = self.center.cpu().numpy()[1]
+        t_x = self.translation.detach().cpu().numpy()[0]
+        t_y = self.translation.detach().cpu().numpy()[1]
         # s_x = self.scale.detach().numpy()[0]
         # s_y = self.scale.detach().numpy()[1]
         T = [[np.cos(beta), -np.sin(beta), px*(1 - np.cos(beta)) + py*np.sin(beta) + t_x],
@@ -125,8 +126,13 @@ def getTransform(rect1, rect2, max_iter=200):
 
     x = torch.cat([rect1, rect1_center, rect1_rand], dim=0)
     y = torch.cat([rect2, rect2_center, rect2_rand], dim=0)
+    if Using_GPU:
+        x = x.cuda()
+        y = y.cuda()
 
     transform_model = TwoDTrandform(rect1_center.squeeze())
+    if Using_GPU:
+        transform_model = transform_model.cuda()
     # Initialize the loss function
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.SGD(transform_model.parameters(), lr=0.02) # 用小学习率，加大步数
