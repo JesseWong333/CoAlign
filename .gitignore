@@ -152,4 +152,5 @@ run_on_hpc.py
 submitit_template.sh
 tmp.py
 tmp/
+vis_offset
     

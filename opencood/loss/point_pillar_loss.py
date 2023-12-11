@@ -30,7 +30,10 @@ class PointPillarLoss(nn.Module):
         else:
             self.iou = None
         
-        self.calibrate = args['calibrate']
+        if 'calibrate' in args:
+            self.calibrate = args['calibrate']
+        else:
+            self.calibrate = False
         self.loss_dict = {}
 
     def forward(self, output_dict, target_dict, suffix=""):
@@ -95,8 +98,69 @@ class PointPillarLoss(nn.Module):
 
         ######### calibrate loss #########
         if self.calibrate:
-            coords_pred = output_dict["calibrate"]
-            pass
+            # 1） 需要mask的地方， offset不预测
+            coords_pred = output_dict["calibrate"] # B, 3, H, W 这个地方需要插值
+            target_offset = target_dict['offset'].permute(0, 3, 1, 2) #  # target 是 B, H, W, 2 -> B, 2, H, W
+            target_offset_mask = target_dict['offset_mask'].unsqueeze(1).float() # B, 1, H, W
+            all_offset_loss = 0
+            all_offset_mask_loss = 0
+            for i in range(len(coords_pred)):
+                pred = coords_pred[i]
+                # scale target
+                b, _, h, w = pred.size()
+                target_offset_scaled = target_offset
+                target_offset_mask_scaled = target_offset_mask
+                if target_offset.shape[2] !=  h or target_offset.shape[3] != w:
+                    target_offset_scaled = F.interpolate(target_offset, (h, w), mode='area')         
+                    target_offset_mask_scaled = F.interpolate(target_offset_mask, (h, w), mode='area') # 只可以对float插值
+                    # target_offset_mask_scaled[target_offset_mask_scaled >= 0.5] = 1.0 # BEC_loss输入float
+                    # target_offset_mask_scaled[target_offset_mask_scaled < 0.5] = 0.0
+                    # target_offset_mask_scaled = target_offset_mask_scaled.long()
+                # select positive and negtive
+                target_offset_scaled = target_offset_scaled.permute(0, 2, 3, 1).view(b*h*w, 2)  # b*h*w, 2
+                target_offset_mask_scaled = target_offset_mask_scaled.squeeze(1).flatten()
+
+                pos_boolean = (target_offset_scaled[:, 0] !=0.0) | (target_offset_scaled[:, 0] !=0.0)
+                neg_boolean = (target_offset_scaled[:, 0] == 0.0) & (target_offset_scaled[:, 0] == 0.0)
+
+                pos_mask_boolean = (target_offset_mask_scaled == 1)
+
+                pos_inds = torch.nonzero( pos_boolean & ( ~pos_mask_boolean)).squeeze(-1) # 不管是正还是负都要去掉mask为true的部分
+                neg_inds = torch.nonzero( neg_boolean & ( ~pos_mask_boolean)).squeeze(-1)
+
+                pos_inds_mask = torch.nonzero(pos_mask_boolean).squeeze(-1)
+                neg_inds_mask = torch.nonzero(target_offset_mask_scaled == 0).squeeze(-1)
+
+                # random sample
+                num_pos = pos_inds.numel()  # 可能为0
+                if num_pos > 0:
+                    num_neg = num_pos * 5 # 比例可设置
+                else:
+                    num_neg = neg_inds.numel() // 100
+                neg_inds_select = self.random_sample(neg_inds, num_neg)
+
+                num_pos_mask = pos_inds_mask.numel()
+                if num_pos_mask > 0:
+                    num_neg_mask = num_pos_mask * 5
+                else:
+                    num_neg_mask = neg_inds_mask.numel() // 100
+                neg_inds_mask_select = self.random_sample(neg_inds_mask, num_neg_mask)
+
+                all_offset_inds = torch.cat([pos_inds, neg_inds_select]).unique()
+                all_offset_mask_inds = torch.cat([pos_inds_mask, neg_inds_mask_select, pos_inds]).unique() # 所有pos_inds都是roi
+
+                pred_offset = pred[:, :2, :, :].permute(0, 2, 3, 1).reshape(b*h*w, 2)
+                pred_mask = pred[:, 2, :, :].flatten()
+                loss_offset = nn.MSELoss()(pred_offset[all_offset_inds, :], target_offset_scaled[all_offset_inds, :])
+                loss_mask = F.binary_cross_entropy(torch.sigmoid(pred_mask[all_offset_mask_inds]), target_offset_mask_scaled[all_offset_mask_inds])
+
+                all_offset_loss  += loss_offset
+                all_offset_mask_loss += loss_mask
+
+            total_loss = total_loss + all_offset_loss + all_offset_mask_loss
+            self.loss_dict.update({'offset_loss': all_offset_loss.item(),
+                               'offset_mask_loss': all_offset_mask_loss.item()})
+
 
         ######## IoU ###########
         if self.iou:
@@ -125,6 +189,11 @@ class PointPillarLoss(nn.Module):
 
         return total_loss
 
+    @staticmethod
+    def random_sample(inds, expect_num):
+        random_indices = torch.randperm(inds.shape[0])[:expect_num]  # 使用torch.randperm获取随机索引
+        random_elements = inds[random_indices]
+        return random_elements
 
     @staticmethod
     def add_sin_difference(boxes1, boxes2, dim=6):
@@ -190,12 +259,14 @@ class PointPillarLoss(nn.Module):
         cls_loss = self.loss_dict.get('cls_loss', 0)
         dir_loss = self.loss_dict.get('dir_loss', 0)
         iou_loss = self.loss_dict.get('iou_loss', 0)
+        offset_loss = self.loss_dict.get('offset_loss', 0)
+        offset_mask_loss = self.loss_dict.get('offset_mask_loss',0)
 
 
         print("[epoch %d][%d/%d]%s || Loss: %.4f || Conf Loss: %.4f"
-              " || Loc Loss: %.4f || Dir Loss: %.4f || IoU Loss: %.4f" % (
+              " || Loc Loss: %.4f || Dir Loss: %.4f || IoU Loss: %.4f || Offset Loss: %.4f || Offsetmask Loss: %.4f " % (
                   epoch, batch_id + 1, batch_len, suffix,
-                  total_loss, cls_loss, reg_loss, dir_loss, iou_loss))
+                  total_loss, cls_loss, reg_loss, dir_loss, iou_loss, offset_loss, offset_mask_loss))
 
         if not writer is None:
             writer.add_scalar('Regression_loss'+suffix, reg_loss,

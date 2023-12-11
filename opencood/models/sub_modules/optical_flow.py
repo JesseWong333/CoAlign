@@ -87,25 +87,30 @@ def bilinear_sampler(img, coords, mode='bilinear', mask=False):
 
 class FlowPred(nn.Module):
 
-    def __init__(self, max_iters, embeding_dim) -> None:
+    def __init__(self, max_iters, embeding_dim, dim_scale=4) -> None:
         super().__init__()
         self.max_iters = max_iters
         self.radius = 4
         self.S = 2
-        self.embeding_dim = embeding_dim
+        # 先对embeding project，减少计算量
+        # 投影之后要norm一下
+        self.feat_project = nn.Linear(embeding_dim, embeding_dim // dim_scale)
+        self.norm = nn.LayerNorm(embeding_dim // dim_scale)
+        
+        self.embeding_dim = embeding_dim // dim_scale
 
         # 预测模型相关
-        kitchen_dim =   (2*self.radius + 1)**2 + embeding_dim + 64*3 + 3  # embeding_dim是传输过来的feature C
+        kitchen_dim =   (2*self.radius + 1)**2 + self.embeding_dim + 64*3 + 3  # embeding_dim是传输过来的feature C
         self.to_delta = MLPMixer(
             S=self.S,
             input_dim=kitchen_dim,
             dim=512,
-            output_dim=self.S*(embeding_dim+2),
+            output_dim=self.S*(self.embeding_dim+2),
             depth=4,  # 层数， 默认12还很多
         )
 
         self.ffeat_updater = nn.Sequential(
-            nn.Linear(self.latent_dim, self.latent_dim),
+            nn.Linear(self.embeding_dim, self.embeding_dim),
             nn.GELU(),
         )
     
@@ -113,10 +118,10 @@ class FlowPred(nn.Module):
         """
         Args:
             fhid (_type_): B*N, S, C
-            fcorr (_type_): B*N, S, R*R
+            fcorr (_type_): B*N, S, R*R  # 这个传输进来的尺寸不对
             flow (_type_): # B*N,S,3
         """
-        B_N = flow_sincos.shape[0]
+        B_N = fhid.shape[0]
         flow_sincos = get_3d_embedding(flow, 64, cat_coords=True) # B*N, S, 64*3 + 3
         x = torch.cat([fhid, fcorr, flow_sincos], dim=2) # B*N, S, C+R*R+64*3+3 # 最后一项是多维特征
         delta = self.to_delta(x) # # B*N, S*(self.embeding_dim+2)
@@ -125,11 +130,11 @@ class FlowPred(nn.Module):
 
     def cal_corr(self, init_f, target_f):
         # 计算相关度矩阵; init_f(原特征), target_f(维护的一个特征序列)
-        # [B, S, N, C] # 自己应该不不计算的， 下一版本优化
-        B, S, N, C = target_f
+        # [B, S, N, C] # 
+        B, S, N, C = target_f.shape
         init_f = init_f.permute(0, 1, 3, 2)
-        corrs = torch.matmul(target_f, init_f) # B, S, N, N
-        corrs =  corrs / torch.sqrt(torch.tensor(C).float())  # 模仿 attention的做法
+        corrs = torch.matmul(target_f, init_f) # B, S, N, N  # 这个相关性矩阵太消耗计算资源了；必须仅计算周围一定点的个数， 后面也是只采样指定个
+        corrs =  corrs / torch.sqrt(torch.tensor(C).float())
         return corrs
     
     def sample_coor(self, corrs, coords):
@@ -143,7 +148,7 @@ class FlowPred(nn.Module):
         dx = torch.linspace(-r, r, 2*r+1)
         dy = torch.linspace(-r, r, 2*r+1)
         delta = torch.stack(torch.meshgrid(dy, dx, indexing='ij'), axis=-1).to(coords.device) # R*R**2 R=2*r+1
-        centroid = coords.flatten(start_dim=0, end_dim=2)[:, None, None, 2] # B*S*N, 1, 1, 2
+        centroid = coords.flatten(start_dim=0, end_dim=2)[:, None, None, :] # B*S*N, 1, 1, 2
         delta = delta.view(1, 2*r+1, 2*r+1, 2)
         coords = centroid + delta
         sampled_corrs = bilinear_sampler(corrs.flatten(start_dim=0, end_dim=2).unsqueeze(1), coords)
@@ -158,8 +163,20 @@ class FlowPred(nn.Module):
             X: S, C, H, W  S=2为两车情形
             ref_2d: # (1, H*W, 2) # 注意后两维是先w,再h, 一样，就是标准做法
         """
+        
+        # featue projection
+        X = X.permute(0, 2, 3, 1)
+        X = self.feat_project(X)
+        X = self.norm(X)
+        X = X.permute(0, 3, 1, 2)
+
         # 第一帧 是ego，就是密集预测
         S, C, H, W = X.shape
+
+        ref_2d = ref_2d.permute(0, 2, 1).view(1, 2, H, W)
+        ref_2d = F.interpolate(ref_2d, scale_factor=0.5)
+        ref_2d = ref_2d.permute(0, 2, 3, 1).view(1, )
+
         B, N, D = ref_2d.shape  # B=1 
 
         assert H*W == N
@@ -178,7 +195,7 @@ class FlowPred(nn.Module):
            
             # 采样coords附近的相关矩阵
             fcorrs = self.sample_coor(corrs, coords)  # B, S, N, R*R
-            fcorrs_ = fcorrs.permute(0, 2, 1, 3).flatten(start_dim=1, end_dim=2)  # B*N, S, R*R
+            fcorrs_ = fcorrs.permute(0, 2, 1, 3).flatten(start_dim=0, end_dim=1)  # B*N, S, R*R
 
             flows_ = (coords - coords[:,0:1]).permute(0,2,1,3).reshape(B*N, S, 2)  #  B*N, S, 2 减去初始坐标
             times_ = torch.linspace(0, S, S, device=X.device).reshape(1, S, 1).repeat(B*N, 1, 1) # B*N, S, 1 

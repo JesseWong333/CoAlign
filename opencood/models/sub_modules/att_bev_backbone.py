@@ -128,7 +128,7 @@ class AttBEVBackbone(nn.Module):
         ret_dict = {}
         x = spatial_features
 
-        H, W = x.shape[2:]   #  200, 704
+        H, W = x.shape[2:]   #  200, 504
         pairwise_t_matrix = pairwise_t_matrix[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]] # [B, L, L, 2, 3]
 
         pairwise_t_matrix[...,0,1] = pairwise_t_matrix[...,0,1] * H / W

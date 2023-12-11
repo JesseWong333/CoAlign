@@ -349,13 +349,13 @@ class BasePostprocessor(object):
         # tmp_object_dict = {}
         tmp_object_list = []
         cav_content = cav_contents[0]
-        tmp_object_list = cav_content['params']['vehicles'] #世界坐标系下
+        tmp_object_list = cav_content['params']['vehicles']
 
         output_dict = {}
         filter_range = self.params['anchor_args']['cav_lidar_range']
 
 
-        box_utils.project_world_objects_dairv2x(tmp_object_list,
+        box_utils.project_world_objects_dairv2x(tmp_object_list,  # 世界坐标系下的box投影到各自的坐标系 （只对ego有效，其他端的标签是空的）
                                         output_dict,
                                         reference_lidar_pose,
                                         filter_range,

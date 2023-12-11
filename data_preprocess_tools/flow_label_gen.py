@@ -407,7 +407,7 @@ def label_flow(data, bev_shape=[100, 252]):
 if __name__ == '__main__':
     co_datainfo = read_json(os.path.join(data_dir, 'cooperative/data_info_with_delay.json'))
     
-    save_dir = 'offset_maps'
+    save_dir = 'offset_maps_update'
     if not os.path.exists(os.path.join(data_dir, save_dir)):
         os.mkdir(os.path.join(data_dir, save_dir))
 
@@ -440,5 +440,5 @@ if __name__ == '__main__':
             data['offset'] = ''
             data['mask'] = ''
 
-    write_json(os.path.join(data_dir, 'cooperative/data_info_processed.json'), co_datainfo)
+    write_json(os.path.join(data_dir, 'cooperative/data_info_processed_updated.json'), co_datainfo)
 

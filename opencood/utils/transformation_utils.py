@@ -61,7 +61,7 @@ def get_pairwise_transformation(base_data_dict, max_cav, proj_first):
                 if i != j:
                     # i->j: TiPi=TjPj, Tj^(-1)TiPi = Pj
                     # t_matrix = np.dot(np.linalg.inv(t_list[j]), t_list[i])
-                    t_matrix = np.linalg.solve(t_list[j], t_list[i])  # Tjw*Twi = Tji
+                    t_matrix = np.linalg.solve(t_list[j], t_list[i])  #存储的是i->j的转换(是这个没错), 还是j->i
                     pairwise_t_matrix[i, j] = t_matrix
 
     return pairwise_t_matrix

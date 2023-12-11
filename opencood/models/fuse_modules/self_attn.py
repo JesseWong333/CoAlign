@@ -63,7 +63,7 @@ class AttFusion(nn.Module):
           t_matrix = pairwise_t_matrix[b][:N, :N, :, :]
           i = 0 # ego
           xx = warp_affine_simple(xx, t_matrix[i, :, :, :], (H, W))
-
+  
           cav_num = xx.shape[0]
           xx = xx.view(cav_num, C, -1).permute(2, 0, 1) #  (H*W, cav_num, C), perform self attention on each pixel.
           h = self.att(xx, xx, xx)
