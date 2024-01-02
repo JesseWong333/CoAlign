@@ -11,7 +11,7 @@ test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 time_delay: 5
 load_offset_map: true
 
-finetune_flow_model: true
+finetune_flow_model: false
 
 loda_pretrained_model: true
 pre_trained_path: "./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withnoise_2023_09_28_12_26_34/net_epoch15.pth"
@@ -36,7 +36,7 @@ noise_setting:
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 2
-  epoches: 10
+  epoches: 20
   eval_freq: 2
   save_freq: 2
   max_cav: &max_cav 5

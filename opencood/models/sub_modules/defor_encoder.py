@@ -7,12 +7,30 @@ import torch.nn as nn
 import math
 import torch.nn.functional as F
 from opencood.utils.mmcv_utils import constant_init, xavier_init
-from opencood.models.sub_modules.torch_transformation_utils import warp_affine_simple
 # from multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32 as MultiScaleDeformableAttnFunction
 from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch # 使用pytorch版本， cuda算子在部分机器上编译出问题
 from mmdet.models.utils import LearnedPositionalEncoding
-from opencood.models.sub_modules.flownet import FlowPred
+from flow_pred.CNN_flow_pred2 import FlowEncoderDecoder
 
+def warp_affine_simple(src, M, dsize,
+        mode='bilinear',
+        padding_mode='zeros',
+        align_corners=False, return_mask=False):
+
+    B, C, H, W = src.size()
+    grid = F.affine_grid(M,
+                         [B, C, dsize[0], dsize[1]],
+                         align_corners=align_corners).to(src)
+    out = F.grid_sample(src, grid, padding_mode=padding_mode, align_corners=align_corners)
+    # use the grid to generate a mask
+    if return_mask:
+        mask = (grid > 1) | (grid < -1)
+        mask = mask[:, :, :, 0] | mask[:, :, :, 1]
+        mask = mask.unsqueeze(-1).repeat(1, 1, 1, 2)
+        return out, mask
+    else:
+        return out
+    
 # SelfAttn 和 CrossAttn 可以通用
 class DeforAttn(nn.Module):
     def __init__(self, embed_dims, num_heads=1, num_points=4, dropout=0.1, max_num_levels=2):
@@ -228,7 +246,7 @@ class DeforEncoder(nn.Module):
         else:
             self.calibrate = False
         if self.calibrate:
-            self.flow_pred = FlowPred(model_cfg["embed_dims"])
+            self.flow_pred = FlowEncoderDecoder(8, 128) # todo, magic number
 
     
     @staticmethod
@@ -277,16 +295,65 @@ class DeforEncoder(nn.Module):
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
     
-    def forward(self, x, record_len, pairwise_t_matrix, offsets, offset_masks):
+    @staticmethod
+    def create_mesh_grid(bs, H, W, device):
+        ref_y, ref_x = torch.meshgrid(
+                    torch.linspace(
+                        -H//2, H//2-1, H, dtype=torch.float32),
+                    torch.linspace(
+                        -W//2, W//2-1, W, dtype=torch.float32)
+                )
+        ref_2d = torch.cat((ref_x.unsqueeze(-1), ref_y.unsqueeze(-1)), -1).unsqueeze(0)
+        ref_2d = ref_2d.repeat(bs, 1, 1, 1) # bs, H, W, 2
+        return ref_2d.to(device)  
+
+    @staticmethod
+    def applyTransform(points, T):
+        # points: bs*N*2
+        # T: bs*2*3
+        bs, N, _ = points.shape
+        T = T.float() # float64 -> float32 
+        T_pad = torch.Tensor([0, 0, 1]).float().to(points).unsqueeze(0).repeat(bs, 1, 1) # 1*3 -> 1,1,3 -> N, 1, 3
+        T = torch.cat([T, T_pad], dim=1)
+        
+        ones = torch.ones((bs, N, 1)).to(points)
+        P = torch.cat((points, ones), dim=-1)
+        
+        projected_points = (T@(P.transpose(1, 2))).transpose(1, 2)[:, :, :2] # (bs, 3, 2) @ (bs, 3, N)
+        return projected_points
+    
+    def project_flow(self, flow, T_forward, T_backward):
+        # flow: Bs, H, W, 2
+        # T_forward: bs*3*3
+        # T_backward: bs*3*3, affine grid level
+        bs, H, W, _ = flow.shape
+        mesh_grid = self.create_mesh_grid(bs, H, W, flow.device)  # torch: bs, H, W, 2
+        flow = flow + mesh_grid
+        # Step1: project the content
+        flow = self.applyTransform(flow.view(bs, H*W, 2), T_forward).reshape(bs, H, W, 2).permute(0, 3, 1, 2) # --> bs, 2, H, W
+        # Step 2: affine grid
+        affined_flow, mask = warp_affine_simple(flow, T_backward, [H, W], return_mask=True)
+        affined_flow = affined_flow.permute(0, 2, 3, 1) # bs, 2, H, W ->  bs, H, W, 2
+        affined_flow = affined_flow - mesh_grid 
+        affined_flow[mask] = 0
+        return affined_flow
+    
+    def forward(self, x, record_len, pairwise_t_matrix, pairwise_t_matrix_forward, adjacent_flows, time_delay):
         # 这里生成ref points
         # 可以融合多个级别,不同大小的feature map, 这里只取最后的一个
            
         split_x = self.regroup(x, record_len)
         C, H, W = split_x[0].shape[1:]
-
+        
+        # 预测参考点
+        if self.calibrate:
+            # 预测参考点
+            flows = self.flow_pred(adjacent_flows, time_delay)  # [bs, H, W, 2]
+            # project flow; 投影了之后flow里面的数值不会变； 怎么投
+            # map: 同样使用warp_affine_simple； 里面的每个值二维， 以自己为中心旋转
+            flows = self.project_flow(flows, pairwise_t_matrix_forward[:, 1, 0, :, :], pairwise_t_matrix[:, 0, 1, :, :])  # [bs, H, W, 2], forward: inf->ego; backward: ego->inf
     
         out = []
-        flow_out = [[] for _ in range(3)] # 3 level flows
         for b, xx in enumerate(split_x):
             # input: xx: N, C, H, W; 其中N可能变化
             N = xx.shape[0] # N is dynamic
@@ -299,38 +366,20 @@ class DeforEncoder(nn.Module):
             bev_pos = bev_pos.flatten(2).permute(0, 2, 1) # [1, C, h*w]->[1, h*w, C]
 
             t_matrix = pairwise_t_matrix[b][:N, :N, :, :]
+
             i = 0  # ego
             xx = warp_affine_simple(xx, t_matrix[i, :, :, :], (H, W))
 
             ref_2d = self.get_reference_points(
                 H, W, dim='2d', bs=1, device=split_x[0].device, dtype=split_x[0].dtype)
-    
-            # 预测参考点
+
             if self.calibrate and N > 1:
-                # 预测参考点
-                flows = self.flow_pred(xx)  # # [1, 3, H, W]
-                for i in range(3):
-                    flow_out[i].append(flows[i])
-                flow_pred = flows[0]
-                offset = flow_pred[:, :2, :, :].permute(0, 2, 3, 1).view(1, self.bev_h*self.bev_w, 2).unsqueeze(2)
-                offset_mask = F.sigmoid(flow_pred[:, 2:, :, :]) > 0.5 # 大于0为, True要遮掩的部分
-                offset_mask = offset_mask.view(self.bev_h*self.bev_w)
-                offset_mask_index = offset_mask.nonzero().squeeze(-1)
-                ref_2d_ = ref_2d + offset
-                ref_2d_[:, offset_mask_index, :, :] = -1e6
-                ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
+                # ref_2d: 1, H*W, 1, 2
+                flow = flows[b].view(self.bev_h*self.bev_w, 2).unsqueeze(0).unsqueeze(2) # H, W, 2 -> [1, H*W, 1, 2]
+                ref_2d_calibrate = ref_2d + flow  # b, 
+                ref_2d = torch.cat([ref_2d, ref_2d_calibrate], dim=2)
             else:
-                # 超距离范围，预测flow预测全部填充默认值；计算loss时为0
-                # [100, 252], [50, 126] [25, 63] todo: magic numbers
-                flow_dump_1 = torch.zeros((1, 3, 100, 252), device=xx.device)
-                flow_dump_2 = torch.zeros((1, 3, 50, 126), device=xx.device) 
-                flow_dump_3 = torch.zeros((1, 3, 25, 63), device=xx.device) 
-                flow_out[0].append(flow_dump_1)
-                flow_out[1].append(flow_dump_2)
-                flow_out[2].append(flow_dump_3)
-
                 ref_2d = ref_2d.repeat(1, 1, N,1) # (1, H*W, N, 2)
-
             # 使用真值参考点 offsets = transformed_points - points
             # if offsets is not None and offset_masks is not None and N > 1:
             #     offset = offsets[b].view(self.bev_h*self.bev_w, 2).unsqueeze(0).unsqueeze(2)  # [1, H*W, 1, 2]
@@ -358,10 +407,6 @@ class DeforEncoder(nn.Module):
             bev_queries = bev_queries.permute(0, 2, 1).view(1, C, H, W)  # 就是这个问题，其他的不行也是因为我没有permute
             out.append(bev_queries)
        
-        if self.calibrate:
-            flow_out_ = [torch.cat(flow_out[i], dim=0) for i in range(3)]
-            return torch.cat(out, dim=0), flow_out_ # [B, 3, h, w] 大小的tensor list
-        else:
-            return torch.cat(out, dim=0)
+        return torch.cat(out, dim=0)
 
     

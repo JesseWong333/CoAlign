@@ -45,30 +45,27 @@ class PointPillarDeformable(nn.Module):
         lidar_pose = data_dict['lidar_pose']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
 
-        if 'offset' in data_dict:
-            offset = data_dict['offset']
-            offset_mask = data_dict['offset_mask']
+        if 'adjacent_flows' in data_dict:
+            adjacent_flows = data_dict['adjacent_flows']
+            time_delay = data_dict['time_delay']
         else:
-            offset = None
-            offset_mask = None
+            adjacent_flows = None
+            time_delay = None
 
         batch_dict = {'voxel_features': voxel_features,
                       'voxel_coords': voxel_coords,
                       'voxel_num_points': voxel_num_points,
                       'record_len': record_len,
                       'pairwise_t_matrix': pairwise_t_matrix,
-                      'offset': offset,
-                      'offset_mask': offset_mask}
+                      'adjacent_flows': adjacent_flows,
+                      'time_delay': time_delay}
             
         batch_dict = self.pillar_vfe(batch_dict)
         batch_dict = self.scatter(batch_dict)
 
         batch_dict = self.backbone(batch_dict)
 
-        if self.calibrate:
-            spatial_features_2d, coord_predictions = batch_dict['spatial_features_2d']
-        else:
-            spatial_features_2d = batch_dict['spatial_features_2d']
+        spatial_features_2d = batch_dict['spatial_features_2d']
 
         psm = self.cls_head(spatial_features_2d)
         rm = self.reg_head(spatial_features_2d)
@@ -77,8 +74,8 @@ class PointPillarDeformable(nn.Module):
                        'reg_preds': rm}
         if self.use_dir:
             output_dict.update({'dir_preds': self.dir_head(spatial_features_2d)})
-        if self.calibrate:
-            output_dict.update({'calibrate': coord_predictions})
+        # if self.calibrate:
+        #     output_dict.update({'calibrate': coord_predictions})
             
         return output_dict
     

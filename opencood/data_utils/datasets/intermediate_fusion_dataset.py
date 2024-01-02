@@ -451,11 +451,9 @@ def getIntermediateFusionDataset(cls):
             processed_data_dict['ego'].update({'sample_idx': idx,
                                                 'cav_id_list': cav_id_list})
 
-            if "offset" in ego_cav_base["params"]:
-                processed_data_dict['ego'].update({"offset": ego_cav_base["params"]["offset"],
-                                                   "offset_mask": ego_cav_base["params"]["mask"] })
-                processed_data_dict['ego']['label_dict'].update({"offset": ego_cav_base["params"]["offset"],
-                                                   "offset_mask": ego_cav_base["params"]["mask"] })
+            if "adjacent_flows" in ego_cav_base["params"]:
+                processed_data_dict['ego'].update({"adjacent_flows": ego_cav_base["params"]["adjacent_flows"],
+                                                   "time_delay": ego_cav_base["params"]["time_delay"] })
             return processed_data_dict
 
 
@@ -478,8 +476,8 @@ def getIntermediateFusionDataset(cls):
             # pairwise transformation matrix
             pairwise_t_matrix_list = []
 
-            offset_list = []
-            offset_mask_list = []
+            adjacent_flows_list = []
+            time_delays_list = []
 
             # disconet
             teacher_processed_lidar_list = []
@@ -494,6 +492,14 @@ def getIntermediateFusionDataset(cls):
 
             for i in range(len(batch)):
                 ego_dict = batch[i]['ego']
+                if  "adjacent_flows" in ego_dict:
+                    if ego_dict["adjacent_flows"] is not None:
+                        adjacent_flows_list.append(ego_dict["adjacent_flows"])
+                        time_delays_list.append(ego_dict["time_delay"])
+                    else:
+                        # filter out, when the adjacent_flows are missing
+                        continue
+
                 object_bbx_center.append(ego_dict['object_bbx_center'])
                 object_bbx_mask.append(ego_dict['object_bbx_mask'])
                 object_ids.append(ego_dict['object_ids'])
@@ -507,10 +513,6 @@ def getIntermediateFusionDataset(cls):
                 record_len.append(ego_dict['cav_num'])
                 label_dict_list.append(ego_dict['label_dict'])
                 pairwise_t_matrix_list.append(ego_dict['pairwise_t_matrix'])
-
-                if  "offset" in ego_dict:
-                    offset_list.append(np.expand_dims(ego_dict["offset"], axis=0))
-                    offset_mask_list.append(np.expand_dims(ego_dict["offset_mask"], axis=0))
 
                 if self.visualize:
                     origin_lidar.append(ego_dict['origin_lidar'])
@@ -526,6 +528,8 @@ def getIntermediateFusionDataset(cls):
                     object_bbx_center_single.append(ego_dict['single_object_bbx_center_torch'])
                     object_bbx_mask_single.append(ego_dict['single_object_bbx_mask_torch'])
 
+            if len(adjacent_flows_list) == 0:
+                return None
 
             # convert to numpy, (B, max_num, 7)
             object_bbx_center = torch.from_numpy(np.array(object_bbx_center))
@@ -548,9 +552,8 @@ def getIntermediateFusionDataset(cls):
             label_torch_dict = \
                 self.post_processor.collate_batch(label_dict_list)
 
-            if len(offset_list) > 0:
-                offsets = torch.from_numpy(np.concatenate(offset_list, axis=0))
-                offset_masks = torch.from_numpy(np.concatenate(offset_mask_list, axis=0))
+            adjacent_flows = torch.cat(adjacent_flows_list, dim=0)
+            time_delays = torch.tensor(time_delays_list)
             # for centerpoint
             label_torch_dict.update({'object_bbx_center': object_bbx_center,
                                      'object_bbx_mask': object_bbx_mask})
@@ -575,11 +578,8 @@ def getIntermediateFusionDataset(cls):
                                     'lidar_pose': lidar_pose,
                                     'anchor_box': self.anchor_box_torch})
 
-            if len(offset_list) > 0:
-                output_dict['ego'].update({'offset': offsets,                   
-                                           'offset_mask': offset_masks})
-                output_dict['ego']['label_dict'].update({'offset': offsets,                   
-                                           'offset_mask': offset_masks})
+            output_dict['ego'].update({'adjacent_flows': adjacent_flows,                   
+                                    'time_delay': time_delays})
 
             if self.visualize:
                 origin_lidar = \

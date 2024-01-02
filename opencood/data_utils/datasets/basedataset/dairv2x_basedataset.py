@@ -7,7 +7,9 @@ import numpy as np
 from torch.utils.data import Dataset
 from PIL import Image
 import random
+import pickle
 import opencood.utils.pcd_utils as pcd_utils
+from opencood.utils.common_utils import merge_features_to_dict
 from opencood.data_utils.augmentor.data_augmentor import DataAugmentor
 from opencood.hypes_yaml.yaml_utils import load_yaml
 from opencood.utils.pcd_utils import downsample_lidar_minimum
@@ -18,6 +20,11 @@ from opencood.utils.transformation_utils import veh_side_rot_and_trans_to_trasnf
 from opencood.utils.transformation_utils import inf_side_rot_and_trans_to_trasnformation_matrix
 from opencood.data_utils.pre_processor import build_preprocessor
 from opencood.data_utils.post_processor import build_postprocessor
+try:
+    from spconv.utils import VoxelGeneratorV2 as VoxelGenerator
+except:
+    from spconv.utils import VoxelGenerator
+from flow_pred.flow_2d_estimator import FLowScatter, collate_batch_dict, FlowEstimator
 
 class DAIRV2XBaseDataset(Dataset):
     def __init__(self, params, visualize, train=True):
@@ -62,7 +69,7 @@ class DAIRV2XBaseDataset(Dataset):
         self.root_dir = params['data_dir']
 
         self.split_info = read_json(split_dir)
-        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info_processed.json'))
+        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info_processed_updated.json'))
         self.co_data = OrderedDict()
         for frame_info in co_datainfo:
             veh_frame_id = frame_info['vehicle_image_path'].split("/")[-1].replace(".jpg", "")  # 使用vehicle作为帧的ID
@@ -87,6 +94,15 @@ class DAIRV2XBaseDataset(Dataset):
 
         if "bev_w" in self.params:
             self.bev_w = self.params["bev_w"]
+        
+        self.past_frame = 5 # todo
+        self.voxel_generator = VoxelGenerator(
+            voxel_size=[0.4, 0.4, 3],
+            point_cloud_range=[-100.8, -40, -1.5, 100.8, 40, 1.5],
+            max_num_points=32,
+            max_voxels=32000
+        )
+        self.scatter = FLowScatter()
     
     def reinitialize(self):
         pass
@@ -152,25 +168,16 @@ class DAIRV2XBaseDataset(Dataset):
             data[1]['params']['camera0']['intrinsic'] = load_intrinsic_DAIR_V2X( \
                                             read_json(os.path.join(self.root_dir, 'infrastructure-side/calib/camera_intrinsic/'+str(inf_frame_id)+'.json')))
 
- 
         if self.load_lidar_file or self.visualize:
             data[0]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["vehicle_pointcloud_path"]))
             time_index = self.frame_select(frame_info)
             data[1]['lidar_np'] = self.load_lidar_time(time_index, frame_info)
-            if self.max_time_delay != 0:
-                history_index = time_index + 1
-                data[1]['lidar_np_history'] = self.load_lidar_time(history_index, frame_info)  # lidar_np_history可能为空
-                data[1]['lidar_delay'] = time_index
-                if self.load_offset_map:
-                    if frame_info["offset"] != '' and frame_info["mask"] != '' and time_index != 0 \
-                        and np.load(os.path.join(self.root_dir,frame_info["offset"])).shape[0] >= time_index:
-                            data[0]['params']["offset"] = np.load(os.path.join(self.root_dir,frame_info["offset"]))[time_index-1]
-                            data[0]['params']["mask"] = np.load(os.path.join(self.root_dir,frame_info["mask"]))[time_index-1]
-                    else:
-                        data[0]['params']["offset"] = np.zeros((self.bev_h, self.bev_w, 2), dtype=np.float32) 
-                        data[0]['params']["mask"] = np.full((self.bev_h, self.bev_w), False, dtype=bool)
 
-       
+            if self.load_offset_map:
+                adjacent_flows = self.load_adjacent_flow(frame_info, time_index)
+                data[0]['params']["adjacent_flows"] = adjacent_flows # None, when some frames are missing
+                data[0]['params']["time_delay"] = time_index * 100 # bug2: 时间要乘以100， 预训练是干了的
+                               
         # Label for single side； 路端是data[1], data[1]['params']['vehicles_single_all']是路端的标签，只是这里统一用了key
         data[0]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
                                 'vehicle-side/label/lidar_backup/{}.json'.format(veh_frame_id)))
@@ -182,6 +189,50 @@ class DAIRV2XBaseDataset(Dataset):
                                 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
 
         return data
+    
+    def load_adjacent_flow(self, frame_info, time_index):
+
+        # time_index = self.frame_select(frame_info) # bug: 这里怎么又写了一次
+        # load the flow 
+        track_n_frame = self.max_time_delay + self.past_frame - 1
+        previous_infs = [frame_info['previous_inf_'+str(i)] for i in range(1, track_n_frame + 1)]
+        if None in previous_infs:
+            return None #  when some frames are missing, we return a flag
+        anchor_id = frame_info['infrastructure_pointcloud_path'].split('/')[-1].replace('.pcd', '')
+        previous_ids = [previous_inf[0].split('/')[-1].replace('.pcd', '') for previous_inf in previous_infs]
+        all_ids = [anchor_id] + previous_ids
+        all_ids = all_ids[time_index:time_index+self.past_frame]
+        # load backward flow between each frame
+        adjacent_flows = []
+        for i in range(0, len(all_ids)-1):
+            with open(os.path.join(self.root_dir, 'adjacent_flow', all_ids[i] + '_' + all_ids[i+1] +'.pkl'), 'rb') as f:
+                adjacent_flow = pickle.load(f)
+            anchor_pos = pcd_utils.read_pcd(os.path.join(self.root_dir, 'infrastructure-side/velodyne/'+all_ids[i]+'.pcd'))[0]
+            anchor_pos = FlowEstimator.filter_point_cloud(anchor_pos)[:, :3]
+            adjacent_flow_2d = self.gen_2d_flow(anchor_pos, adjacent_flow) 
+            adjacent_flows.append(adjacent_flow_2d)
+        adjacent_flows = torch.cat(adjacent_flows, dim=1)
+        return adjacent_flows
+
+    def gen_2d_flow(self, pc_1, flow):
+        # pc_1: N, 3
+        # flow: N, 3
+        # voxelize 3D flow into 2D
+        assert pc_1.shape[0] == flow.shape[0]
+        pc_flow = np.concatenate([pc_1, flow[:, :2]], axis=1)
+        voxel_flow = self.voxel_generator.generate(pc_flow) # coord后来加了batch
+        voxel_flow['voxel_features'] = \
+            (voxel_flow['voxels'][:, :, 3:].sum(axis=1)) / \
+                (voxel_flow['num_points_per_voxel'].astype(np.float32).reshape(-1, 1))
+
+        voxel_flow['voxel_features'] = voxel_flow['voxel_features'] * 2.5  # lidar meters -> grid  # todo: magic number
+
+        voxel_flow = merge_features_to_dict([voxel_flow])
+        voxel_flow = collate_batch_dict(voxel_flow)
+        # scatter
+        flow_2d = self.scatter(voxel_flow)
+        flow_2d = torch.flip(flow_2d, dims=[2])
+        return flow_2d 
     
     def load_lidar_time(self, time_index, frame_info):
         if not self.is_frame_exits(time_index, frame_info):
@@ -197,8 +248,8 @@ class DAIRV2XBaseDataset(Dataset):
     def is_frame_exits(index, frame_info):
         if index == 0:
             return True
-        if index > 5:
-            return False
+        # if index > 5:
+        #     return False
         if frame_info["previous_inf_"+str(index)] is not None:
             return True
         return False
@@ -213,7 +264,6 @@ class DAIRV2XBaseDataset(Dataset):
                 time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2的指数分布
                 if time_index > self.max_time_delay:
                     time_index = self.max_time_delay
-
                 if self.is_frame_exits(time_index, frame_info):
                     return time_index
                 else:
@@ -267,7 +317,7 @@ class DAIRV2XBaseDataset(Dataset):
         for cav_content in cav_contents:
             cav_content['params']['vehicles_single'] = \
                     cav_content['params']['vehicles_single_front'] if self.label_type == 'camera' else \
-                    cav_content['params']['vehicles_single_all']  # WJJ:为camera的时候使用原始坐标，lidar的时候使用修改后的坐标
+                    cav_content['params']['vehicles_single_all']
         return self.post_processor.generate_object_center_dairv2x_single(cav_contents, suffix)
 
     def get_ext_int(self, params, camera_id):
@@ -299,3 +349,26 @@ class DAIRV2XBaseDataset(Dataset):
         object_bbx_mask = tmp_dict['object_bbx_mask']
 
         return lidar_np, object_bbx_center, object_bbx_mask
+
+if __name__ == '__main__':
+    from torch.utils.data import DataLoader
+    from opencood.hypes_yaml import yaml_utils
+    hypes = yaml_utils.load_yaml("./opencood/hypes_yaml/dairv2x/lidar_time_delay/pointpillar_deformable_attn_w_end2ned_finetune.yaml")
+    opencood_train_dataset = DAIRV2XBaseDataset(hypes, visualize=True, train=True)
+    # train_loader = DataLoader(opencood_train_dataset,
+    #                           batch_size=hypes['train_params']['batch_size'],
+    #                           num_workers=4,
+    #                           collate_fn=opencood_train_dataset.collate_batch_train,
+    #                           shuffle=True,
+    #                           pin_memory=True,
+    #                           drop_last=True,
+    #                           prefetch_factor=2) 
+    # for i, data in enumerate(opencood_train_dataset):
+    #     if i == 646:
+    #         i = 646
+    #         pass
+    #     print(i)
+    #     pass
+    for i in range(len(opencood_train_dataset)):
+        print(i)
+        opencood_train_dataset.retrieve_base_data(i)

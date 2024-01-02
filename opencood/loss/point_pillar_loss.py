@@ -97,7 +97,7 @@ class PointPillarLoss(nn.Module):
             self.loss_dict.update({'dir_loss': dir_loss.item()})
 
         ######### calibrate loss #########
-        if self.calibrate:
+        if False:
             # 1） 需要mask的地方， offset不预测
             coords_pred = output_dict["calibrate"] # B, 3, H, W 这个地方需要插值
             target_offset = target_dict['offset'].permute(0, 3, 1, 2) #  # target 是 B, H, W, 2 -> B, 2, H, W

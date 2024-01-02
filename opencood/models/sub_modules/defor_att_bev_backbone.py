@@ -123,18 +123,24 @@ class DeforBEVBackbone(nn.Module):
         if DEBUG:
             origin_features = torch.clone(spatial_features)
         record_len = data_dict['record_len']
-        pairwise_t_matrix = data_dict['pairwise_t_matrix']
+        translation_matrixs = data_dict['pairwise_t_matrix']
 
         ups = []
         ret_dict = {}
         x = spatial_features
+        pairwise_t_matrix_forward = translation_matrixs.clone()
+        pairwise_t_matrix_forward = pairwise_t_matrix_forward[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]]
+        pairwise_t_matrix_forward[...,0,2] = pairwise_t_matrix_forward[...,0,2] * 1.25 # 平移要改; 平移1m对应格子[100, 252]移动1.25m
+        pairwise_t_matrix_forward[...,1,2] = pairwise_t_matrix_forward[...,1,2] * 1.25
 
-        H, W = x.shape[2:]   #  200, 704
+        # used for grid_sample
+        H, W = x.shape[2:]   #  200, 504
+        pairwise_t_matrix = translation_matrixs.clone()
         pairwise_t_matrix = pairwise_t_matrix[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]] # [B, L, L, 2, 3]
 
         pairwise_t_matrix[...,0,1] = pairwise_t_matrix[...,0,1] * H / W
         pairwise_t_matrix[...,1,0] = pairwise_t_matrix[...,1,0] * W / H
-        pairwise_t_matrix[...,0,2] = pairwise_t_matrix[...,0,2] / (self.downsample_rate * self.discrete_ratio * W) * 2
+        pairwise_t_matrix[...,0,2] = pairwise_t_matrix[...,0,2] / (self.downsample_rate * self.discrete_ratio * W) * 2 # 2.5 / 504 *2
         pairwise_t_matrix[...,1,2] = pairwise_t_matrix[...,1,2] / (self.downsample_rate * self.discrete_ratio * H) * 2
 
         for i in range(len(self.blocks)):
@@ -158,7 +164,7 @@ class DeforBEVBackbone(nn.Module):
         if len(self.deblocks) > len(self.blocks):
             x = self.deblocks[-1](x)
 
-        x = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
+        x = self.defor_encoder(x, record_len, pairwise_t_matrix, pairwise_t_matrix_forward, data_dict['adjacent_flows'], data_dict['time_delay'])
 
         data_dict['spatial_features_2d'] = x
         return data_dict
