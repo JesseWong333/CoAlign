@@ -1,0 +1,3 @@
+[submodule "SPFlowNet"]
+	path = SPFlowNet
+	url = git@github.com:supersyq/SPFlowNet.git
