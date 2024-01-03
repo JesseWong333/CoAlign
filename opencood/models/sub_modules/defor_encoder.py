@@ -5,13 +5,12 @@
 import torch
 import torch.nn as nn
 import math
-import torch.nn.functional as F
 from opencood.utils.mmcv_utils import constant_init, xavier_init
 from opencood.models.sub_modules.torch_transformation_utils import warp_affine_simple
 # from multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32 as MultiScaleDeformableAttnFunction
 from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch # 使用pytorch版本， cuda算子在部分机器上编译出问题
 from mmdet.models.utils import LearnedPositionalEncoding
-from opencood.models.sub_modules.flownet import FlowPred
+from opencood.models.sub_modules.optical_flow import FlowPred
 
 # SelfAttn 和 CrossAttn 可以通用
 class DeforAttn(nn.Module):
@@ -228,7 +227,7 @@ class DeforEncoder(nn.Module):
         else:
             self.calibrate = False
         if self.calibrate:
-            self.flow_pred = FlowPred(model_cfg["embed_dims"])
+            self.flow_pred = FlowPred(model_cfg["flow_pred_max_iter"], model_cfg["embed_dims"])
 
     
     @staticmethod
@@ -268,7 +267,7 @@ class DeforEncoder(nn.Module):
             )
             ref_y = ref_y.reshape(-1)[None] / H
             ref_x = ref_x.reshape(-1)[None] / W
-            ref_2d = torch.stack((ref_x, ref_y), -1)  # 先w, 再H
+            ref_2d = torch.stack((ref_x, ref_y), -1)  # 先w, 再H, 后面有修正
             ref_2d = ref_2d.repeat(bs, 1, 1).unsqueeze(2)
             return ref_2d
     
@@ -286,7 +285,6 @@ class DeforEncoder(nn.Module):
 
     
         out = []
-        flow_out = [[] for _ in range(3)] # 3 level flows
         for b, xx in enumerate(split_x):
             # input: xx: N, C, H, W; 其中N可能变化
             N = xx.shape[0] # N is dynamic
@@ -306,41 +304,24 @@ class DeforEncoder(nn.Module):
                 H, W, dim='2d', bs=1, device=split_x[0].device, dtype=split_x[0].dtype)
     
             # 预测参考点
-            if self.calibrate and N > 1:
-                # 预测参考点
-                flows = self.flow_pred(xx)  # # [1, 3, H, W]
-                for i in range(3):
-                    flow_out[i].append(flows[i])
-                flow_pred = flows[0]
-                offset = flow_pred[:, :2, :, :].permute(0, 2, 3, 1).view(1, self.bev_h*self.bev_w, 2).unsqueeze(2)
-                offset_mask = F.sigmoid(flow_pred[:, 2:, :, :]) > 0.5 # 大于0为, True要遮掩的部分
-                offset_mask = offset_mask.view(self.bev_h*self.bev_w)
-                offset_mask_index = offset_mask.nonzero().squeeze(-1)
-                ref_2d_ = ref_2d + offset
-                ref_2d_[:, offset_mask_index, :, :] = -1e6
-                ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
-            else:
-                # 超距离范围，预测flow预测全部填充默认值；计算loss时为0
-                # [100, 252], [50, 126] [25, 63] todo: magic numbers
-                flow_dump_1 = torch.zeros((1, 3, 100, 252), device=xx.device)
-                flow_dump_2 = torch.zeros((1, 3, 50, 126), device=xx.device) 
-                flow_dump_3 = torch.zeros((1, 3, 25, 63), device=xx.device) 
-                flow_out[0].append(flow_dump_1)
-                flow_out[1].append(flow_dump_2)
-                flow_out[2].append(flow_dump_3)
-
-                ref_2d = ref_2d.repeat(1, 1, N,1) # (1, H*W, N, 2)
-
-            # 使用真值参考点 offsets = transformed_points - points
-            # if offsets is not None and offset_masks is not None and N > 1:
-            #     offset = offsets[b].view(self.bev_h*self.bev_w, 2).unsqueeze(0).unsqueeze(2)  # [1, H*W, 1, 2]
-            #     offset_mask = offset_masks[b].view(self.bev_h*self.bev_w) # [H*W] 为True的地方遮掩
-            #     offset_mask_index = offset_mask.nonzero().squeeze(-1)
-            #     ref_2d_ = ref_2d + offset
-            #     ref_2d_[:, offset_mask_index, :, :] = -1e6
+            # if self.calibrate and N > 1:
+            #     # 预测参考点
+            #     coord_predictions = self.flow_pred(xx, ref_2d[:, :, 0, :])  # 注意N在flow_pred中是S
+            #     ref_2d_ = coord_predictions[-1].permute(0,2,1,3)[:, :, 1:, :] # [B, N, H*W, 2] -> [B, H*W, N, 2] # 
             #     ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
             # else:
-            #     ref_2d = ref_2d.repeat(1, 1, N,1)
+            #     ref_2d = ref_2d.repeat(1, 1, N,1) # (1, H*W, N, 2)
+
+            # 使用真值参考点 offsets = transformed_points - points
+            if offsets is not None and offset_masks is not None and N > 1:
+                offset = offsets[b].view(self.bev_h*self.bev_w, 2).unsqueeze(0).unsqueeze(2)  # [1, H*W, 1, 2]
+                # offset_mask = offset_masks[b].view(self.bev_h*self.bev_w) # [H*W] 为True的地方遮掩
+                # offset_mask_index = offset_mask.nonzero().squeeze(-1)
+                ref_2d_ = ref_2d + offset
+                # ref_2d_[:, offset_mask_index, :, :] = -1e6
+                ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
+            else:
+                ref_2d = ref_2d.repeat(1, 1, N,1)
 
             xx += self.feature_embeds[:N, :, None, None]  # [N, C, H, W] + [N, C]-> [N, C, 1, 1]
 
@@ -359,8 +340,7 @@ class DeforEncoder(nn.Module):
             out.append(bev_queries)
        
         if self.calibrate:
-            flow_out_ = [torch.cat(flow_out[i], dim=0) for i in range(3)]
-            return torch.cat(out, dim=0), flow_out_ # [B, 3, h, w] 大小的tensor list
+            return torch.cat(out, dim=0), coord_predictions # [B, S, N, 2] 大小的tensor list
         else:
             return torch.cat(out, dim=0)
 

@@ -95,7 +95,7 @@ def getIntermediateFusionDataset(cls):
                 lidar_np = selected_cav_base['lidar_np']
                 lidar_np = shuffle_points(lidar_np)
                 # remove points that hit itself
-                lidar_np = mask_ego_points(lidar_np)  # 对于路端 mask ego有用吗？
+                lidar_np = mask_ego_points(lidar_np)
                 # project the lidar to ego space
                 # x,y,z in ego space
                 projected_lidar = \
@@ -116,15 +116,6 @@ def getIntermediateFusionDataset(cls):
 
                 processed_lidar = self.pre_processor.preprocess(lidar_np)
                 selected_cav_processed.update({'processed_features': processed_lidar})
-                # 处理历史的lidar
-                if 'lidar_np_history' in selected_cav_base and  selected_cav_base['lidar_np_history'] is not None:
-                    lidar_np_history = selected_cav_base['lidar_np_history']
-                    lidar_np_history = shuffle_points(lidar_np_history)
-                    lidar_np_history = mask_ego_points(lidar_np_history)
-                    # no projection
-                    processed_lidar_history = self.pre_processor.preprocess(lidar_np_history)
-                    selected_cav_processed.update({'processed_lidar_history': processed_lidar_history})
-                    selected_cav_processed.update({'lidar_delay': selected_cav_base['lidar_delay']}) 
 
             # generate targets label single GT, note the reference pose is itself.
             object_bbx_center, object_bbx_mask, object_ids = self.generate_object_center(
@@ -361,13 +352,6 @@ def getIntermediateFusionDataset(cls):
                 if self.load_lidar_file:
                     processed_features.append(
                         selected_cav_processed['processed_features'])
-                    if "processed_lidar_history" in selected_cav_processed:
-                        processed_features.append(
-                            selected_cav_processed['processed_lidar_history'] # 这里之前写一样了，bug!
-                        )
-                        # 仅两车延时
-                        processed_data_dict['ego']['time_delay'] = selected_cav_processed['lidar_delay']
-                        cav_num +=1 # 将infr history也视一车，batch的时候用到
                 if self.load_camera_file:
                     agents_image_inputs.append(
                         selected_cav_processed['image_inputs'])
@@ -453,8 +437,6 @@ def getIntermediateFusionDataset(cls):
 
             if "offset" in ego_cav_base["params"]:
                 processed_data_dict['ego'].update({"offset": ego_cav_base["params"]["offset"],
-                                                   "offset_mask": ego_cav_base["params"]["mask"] })
-                processed_data_dict['ego']['label_dict'].update({"offset": ego_cav_base["params"]["offset"],
                                                    "offset_mask": ego_cav_base["params"]["mask"] })
             return processed_data_dict
 
@@ -577,8 +559,6 @@ def getIntermediateFusionDataset(cls):
 
             if len(offset_list) > 0:
                 output_dict['ego'].update({'offset': offsets,                   
-                                           'offset_mask': offset_masks})
-                output_dict['ego']['label_dict'].update({'offset': offsets,                   
                                            'offset_mask': offset_masks})
 
             if self.visualize:
