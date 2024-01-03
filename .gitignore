@@ -153,5 +153,5 @@ submitit_template.sh
 tmp.py
 tmp/
 vis_offset
-flow_pred/checkpoint/*
+./flow_pred/checkpoint
     
