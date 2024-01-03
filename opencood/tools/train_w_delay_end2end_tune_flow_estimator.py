@@ -3,8 +3,6 @@
 # License: TDG-Attribution-NonCommercial-NoDistrib
 # modified by Junjie Wang <junjie.wang@umu.se>
 
-# 仅仅使用检测的梯度去微调flow estimator
-
 import argparse
 import os
 import statistics
