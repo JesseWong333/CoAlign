@@ -21,19 +21,6 @@ class PointPillarScatter(nn.Module):
         Returns:
             batch_spatial_features:(4, 64, H, W)
             
-            |-------|
-            |       |             |-------------|
-            |       |     ->      |  *          |
-            |       |             |             |
-            | *     |             |-------------|
-            |-------|
-
-            Lidar Point Cloud        Feature Map
-            x-axis up                Along with W 
-            y-axis right             Along with H
-
-            Something like clockwise rotation of 90 degree.
-
         """
         pillar_features, coords = batch_dict['pillar_features'], batch_dict[
             'voxel_coords']
@@ -51,7 +38,7 @@ class PointPillarScatter(nn.Module):
             # 根据mask提取坐标
             this_coords = coords[batch_mask, :] # (batch_idx_voxel,4)  # zyx order, x in [0,706], y in [0,200]
             # 这里的坐标是b,z,y和x的形式,且只有一层，因此计算索引的方式如下
-            indices = this_coords[:, 1] + this_coords[:, 2] * self.nx + this_coords[:, 3]
+            indices = this_coords[:, 1] + this_coords[:, 2] * self.nx + this_coords[:, 3]  # WJJ: 反的
             # 转换数据类型
             indices = indices.type(torch.long)
             # 根据mask提取pillar_features

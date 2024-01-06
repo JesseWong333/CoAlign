@@ -324,8 +324,8 @@ class DeforEncoder(nn.Module):
     
     def project_flow(self, flow, T_forward, T_backward):
         # flow: Bs, H, W, 2
-        # T_forward: bs*3*3
-        # T_backward: bs*3*3, affine grid level
+        # T_forward: bs*2*3
+        # T_backward: bs*2*3, affine grid level
         bs, H, W, _ = flow.shape
         mesh_grid = self.create_mesh_grid(bs, H, W, flow.device)  # torch: bs, H, W, 2
         flow = flow + mesh_grid

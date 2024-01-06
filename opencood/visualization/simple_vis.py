@@ -89,7 +89,7 @@ def visualize(infer_result, pcd, pc_range, save_path, method='3d', left_hand=Fal
         if gt_box_tensor is not None:
             gt_box_np = gt_box_tensor.cpu().numpy()
             gt_name = [''] * gt_box_np.shape[0]
-
+ 
         if method == 'bev':
             canvas = canvas_bev.Canvas_BEV_heading_right(canvas_shape=((pc_range[4]-pc_range[1])*10, (pc_range[3]-pc_range[0])*10),
                                             canvas_x_range=(pc_range[0], pc_range[3]), 
