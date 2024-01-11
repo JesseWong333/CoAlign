@@ -62,7 +62,7 @@ class DAIRV2XBaseDataset(Dataset):
         self.root_dir = params['data_dir']
 
         self.split_info = read_json(split_dir)
-        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info_processed.json'))
+        co_datainfo = read_json(os.path.join(self.root_dir, 'cooperative/data_info_processed_updated.json'))
         self.co_data = OrderedDict()
         for frame_info in co_datainfo:
             veh_frame_id = frame_info['vehicle_image_path'].split("/")[-1].replace(".jpg", "")  # 使用vehicle作为帧的ID
@@ -168,7 +168,7 @@ class DAIRV2XBaseDataset(Dataset):
                 if frame_info["offset"] != '' and frame_info["mask"] != '' and time_index != 0 \
                     and np.load(os.path.join(self.root_dir,frame_info["offset"])).shape[0] >= time_index:
                         data[0]['params']["offset"] = np.load(os.path.join(self.root_dir,frame_info["offset"]))[time_index-1]
-                        data[0]['params']["mask"] = np.load(os.path.join(self.root_dir,frame_info["mask"]))[time_index-1]
+                        data[0]['params']["mask"] = np.load(os.path.join(self.root_dir,frame_info["mask"]))[time_index-1]                
                 else:
                     data[0]['params']["offset"] = np.zeros((self.bev_h, self.bev_w, 2), dtype=np.float32) 
                     data[0]['params']["mask"] = np.full((self.bev_h, self.bev_w), False, dtype=bool)
