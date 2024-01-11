@@ -284,7 +284,7 @@ class DeforEncoder(nn.Module):
         C, H, W = split_x[0].shape[1:]
 
         # norm the calibrated offsets
-        offsets[:, :, :, 0] = offsets[:, :, :, 0] / W  # 严重的错误
+        offsets[:, :, :, 0] = offsets[:, :, :, 0] / W  # bug: 严重的错误
         offsets[:, :, :, 1] = offsets[:, :, :, 1] / H
 
         out = []
