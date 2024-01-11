@@ -13,6 +13,7 @@ from opencood.utils.common_utils import merge_features_to_dict
 from opencood.data_utils.augmentor.data_augmentor import DataAugmentor
 from opencood.hypes_yaml.yaml_utils import load_yaml
 from opencood.utils.pcd_utils import downsample_lidar_minimum
+from opencood.utils import box_utils as box_utils
 from opencood.utils.camera_utils import load_camera_data, load_intrinsic_DAIR_V2X
 from opencood.utils.common_utils import read_json
 from opencood.utils.transformation_utils import tfm_to_pose, rot_and_trans_to_trasnformation_matrix
@@ -25,6 +26,60 @@ try:
 except:
     from spconv.utils import VoxelGenerator
 from flow_pred.flow_2d_estimator import FLowScatter, collate_batch_dict, FlowEstimator
+
+def get_calibs(calib_path):
+    calib = read_json(calib_path)
+    if 'transform' in calib.keys():
+        calib = calib['transform']
+    rotation = calib['rotation']
+    translation = calib['translation']
+    return rotation, translation
+
+def rev_matrix(rotation, translation):
+    rotation = np.matrix(rotation)
+    rev_R = rotation.I
+    rev_R = np.array(rev_R)
+    rev_T = - np.dot(rev_R, translation)
+    return rev_R, rev_T
+
+def mul_matrix(rotation_1, translation_1, rotation_2, translation_2):
+    rotation_1 = np.matrix(rotation_1)
+    translation_1 = np.matrix(translation_1)
+    rotation_2 = np.matrix(rotation_2)
+    translation_2 = np.matrix(translation_2)
+
+    rotation = rotation_2 * rotation_1
+    translation = rotation_2 * translation_1 + translation_2
+    rotation = np.array(rotation)
+    translation = np.array(translation)
+    return rotation, translation
+
+def convert_tfm_matrix(rotation, translation):
+    matrix = np.empty([4,4])
+    matrix[0:3, 0:3] = rotation
+    matrix[:, 3][0:3] = np.array(translation)[:, 0]
+    matrix[3, 0:3] = 0
+    matrix[3, 3] = 1
+    return matrix
+
+def trans_lidar_i2v(inf_lidar2world_path, veh_lidar2novatel_path,
+                    veh_novatel2world_path, system_error_offset=None):
+    inf_lidar2world_r, inf_lidar2world_t = get_calibs(inf_lidar2world_path)  # r: rotation, t: translation
+    if system_error_offset is not None:
+        inf_lidar2world_t[0][0] = inf_lidar2world_t[0][0] + system_error_offset['delta_x']
+        inf_lidar2world_t[1][0] = inf_lidar2world_t[1][0] + system_error_offset['delta_y']
+
+    veh_novatel2world_r, veh_novatel2world_t = get_calibs(veh_novatel2world_path)
+    veh_world2novatel_r, veh_world2novatel_t = rev_matrix(veh_novatel2world_r, veh_novatel2world_t)
+    inf_lidar2novatel_r, inf_lidar2novatel_t = mul_matrix(inf_lidar2world_r, inf_lidar2world_t,
+                                                          veh_world2novatel_r, veh_world2novatel_t)
+
+    veh_lidar2novatel_r, veh_lidar2novatel_t = get_calibs(veh_lidar2novatel_path)
+    veh_novatel2lidar_r, veh_novatel2lidar_t = rev_matrix(veh_lidar2novatel_r, veh_lidar2novatel_t)
+    inf_lidar2lidar_r,  inf_lidar2lidar_t = mul_matrix(inf_lidar2novatel_r, inf_lidar2novatel_t,
+                                                       veh_novatel2lidar_r, veh_novatel2lidar_t)
+
+    return inf_lidar2lidar_r, inf_lidar2lidar_t
 
 class DAIRV2XBaseDataset(Dataset):
     def __init__(self, params, visualize, train=True):
@@ -174,7 +229,10 @@ class DAIRV2XBaseDataset(Dataset):
             data[1]['lidar_np'] = self.load_lidar_time(time_index, frame_info)
 
             if self.load_offset_map:
-                adjacent_flows = self.load_adjacent_flow(frame_info, time_index)
+                # we project the flow here first
+                inf_lidar2lidar_r, inf_lidar2lidar_t = trans_lidar_i2v(virtuallidar_to_world, lidar_to_novatel, novatel_to_world, system_error_offset)
+                inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
+                adjacent_flows = self.load_adjacent_flow(frame_info, time_index, inf2veh_transform)
                 data[0]['params']["adjacent_flows"] = adjacent_flows # None, when some frames are missing
                 data[0]['params']["time_delay"] = time_index * 100 # bug2: 时间要乘以100， 预训练是干了的
                                
@@ -190,7 +248,18 @@ class DAIRV2XBaseDataset(Dataset):
 
         return data
     
-    def load_adjacent_flow(self, frame_info, time_index):
+    @staticmethod
+    def project_flow(pos, flow, transform):
+        # pos: N, 3
+        # flow: N, 3
+        # 
+        pos_projected =  box_utils.project_points_by_matrix_torch(pos, transform)
+        flow_ = pos + flow
+        flow_ = box_utils.project_points_by_matrix_torch(flow_, transform)
+        project_flow = flow_ - pos_projected
+        return pos_projected, project_flow
+    
+    def load_adjacent_flow(self, frame_info, time_index, inf2veh_transform):
 
         # time_index = self.frame_select(frame_info) # bug: 这里怎么又写了一次
         # load the flow 
@@ -209,6 +278,7 @@ class DAIRV2XBaseDataset(Dataset):
                 adjacent_flow = pickle.load(f)
             anchor_pos = pcd_utils.read_pcd(os.path.join(self.root_dir, 'infrastructure-side/velodyne/'+all_ids[i]+'.pcd'))[0]
             anchor_pos = FlowEstimator.filter_point_cloud(anchor_pos)[:, :3]
+            anchor_pos, adjacent_flow = self.project_flow(anchor_pos, adjacent_flow, inf2veh_transform)
             adjacent_flow_2d = self.gen_2d_flow(anchor_pos, adjacent_flow) 
             adjacent_flows.append(adjacent_flow_2d)
         adjacent_flows = torch.cat(adjacent_flows, dim=1)
@@ -231,7 +301,6 @@ class DAIRV2XBaseDataset(Dataset):
         voxel_flow = collate_batch_dict(voxel_flow)
         # scatter
         flow_2d = self.scatter(voxel_flow)
-        flow_2d = torch.flip(flow_2d, dims=[2])
         return flow_2d 
     
     def load_lidar_time(self, time_index, frame_info):

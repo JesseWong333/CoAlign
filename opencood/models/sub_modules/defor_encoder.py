@@ -349,10 +349,8 @@ class DeforEncoder(nn.Module):
         if self.calibrate:
             # 预测参考点
             flows = self.flow_pred(adjacent_flows, time_delay)  # [bs, H, W, 2]
-            # project flow; 投影了之后flow里面的数值不会变； 怎么投
-            # map: 同样使用warp_affine_simple； 里面的每个值二维， 以自己为中心旋转
-            flows = self.project_flow(flows, pairwise_t_matrix_forward[:, 1, 0, :, :], pairwise_t_matrix[:, 0, 1, :, :])  # [bs, H, W, 2], forward: inf->ego; backward: ego->inf
-    
+            flows[:, :, :, 0] = flows[:, :, :, 0] / W 
+            flows[:, :, :, 1] = flows[:, :, :, 1] / H
         out = []
         for b, xx in enumerate(split_x):
             # input: xx: N, C, H, W; 其中N可能变化

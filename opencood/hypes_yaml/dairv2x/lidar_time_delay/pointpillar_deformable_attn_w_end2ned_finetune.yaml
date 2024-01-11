@@ -14,7 +14,7 @@ load_offset_map: true
 finetune_flow_model: true
 
 loda_pretrained_model: true
-pre_trained_path: "./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withnoise_2023_09_28_12_26_34/net_epoch15.pth"
+pre_trained_path: "./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_time_delay_2024_01_11_12_03_45/net_epoch15.pth"
 
 bev_h: &bev_h 100
 bev_w: &bev_w 252
@@ -23,7 +23,7 @@ flow_pred:
   args:
     input_channels: 8 # 五帧，4帧flow
     embed_dims: 128
-  model_file: "./flow_pred/checkpoint/checkpoint17.pth"
+  model_file: "./flow_pred/checkpoint/checkpoint19.pth"
 
 noise_setting:
   add_noise: false

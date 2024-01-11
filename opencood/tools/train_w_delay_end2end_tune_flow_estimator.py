@@ -14,7 +14,6 @@ from tensorboardX import SummaryWriter
 import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils
 from opencood.data_utils.datasets import build_dataset
-from flow_pred.CNN_flow_pred2 import FlowEncoderDecoder
 import glob
 from collections import OrderedDict
 from icecream import ic
