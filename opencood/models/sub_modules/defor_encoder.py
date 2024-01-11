@@ -90,11 +90,11 @@ class DeforAttn(nn.Module):
                                                 self.num_points).contiguous() # [1, H*W, n_head, 2, n_point]
 
         offset_normalizer = torch.stack(
-                [spatial_shapes[..., 1], spatial_shapes[..., 0]], -1) # [N, 2] 换了hw一下方位?
+                [spatial_shapes[..., 1], spatial_shapes[..., 0]], -1) # [N, 2] 
         # [1, H*W, N, 2]-> [1, H*W, 1, N, 1, 2] + [1, H*W, n_head, N, n_point, 2]
         sampling_locations = reference_points[:, :, None, :, None, :] \
                 + sampling_offsets \
-                / offset_normalizer[None, None, None, :, None, :]
+                / offset_normalizer[None, None, None, :, None, :]  # sampling_locations: range [0, 1], normalized, left-up corner[0, 0]
         
         # output = MultiScaleDeformableAttnFunction.apply(
         #         value, spatial_shapes, torch.tensor([0], device=query.device), sampling_locations, attention_weights)
@@ -267,7 +267,7 @@ class DeforEncoder(nn.Module):
             )
             ref_y = ref_y.reshape(-1)[None] / H
             ref_x = ref_x.reshape(-1)[None] / W
-            ref_2d = torch.stack((ref_x, ref_y), -1)  # 先w, 再H, 后面有修正
+            ref_2d = torch.stack((ref_x, ref_y), -1)
             ref_2d = ref_2d.repeat(bs, 1, 1).unsqueeze(2)
             return ref_2d
     
@@ -283,9 +283,12 @@ class DeforEncoder(nn.Module):
         split_x = self.regroup(x, record_len)
         C, H, W = split_x[0].shape[1:]
 
-    
+        # norm the calibrated offsets
+        offsets[:, :, :, 0] = offsets[:, :, :, 0] / W  # 严重的错误
+        offsets[:, :, :, 1] = offsets[:, :, :, 1] / H
+
         out = []
-        for b, xx in enumerate(split_x):
+        for b, xx in enumerate(split_x):  
             # input: xx: N, C, H, W; 其中N可能变化
             N = xx.shape[0] # N is dynamic
 
@@ -315,14 +318,14 @@ class DeforEncoder(nn.Module):
             # 使用真值参考点 offsets = transformed_points - points
             if offsets is not None and offset_masks is not None and N > 1:
                 offset = offsets[b].view(self.bev_h*self.bev_w, 2).unsqueeze(0).unsqueeze(2)  # [1, H*W, 1, 2]
-                # offset_mask = offset_masks[b].view(self.bev_h*self.bev_w) # [H*W] 为True的地方遮掩
-                # offset_mask_index = offset_mask.nonzero().squeeze(-1)
+                offset_mask = offset_masks[b].view(self.bev_h*self.bev_w) # [H*W] 为True的地方遮掩
+                offset_mask_index = offset_mask.nonzero().squeeze(-1)
                 ref_2d_ = ref_2d + offset
-                # ref_2d_[:, offset_mask_index, :, :] = -1e6
+                ref_2d_[:, offset_mask_index, :, :] = -1e6
                 ref_2d = torch.cat([ref_2d, ref_2d_], dim=2)
             else:
                 ref_2d = ref_2d.repeat(1, 1, N,1)
-
+            
             xx += self.feature_embeds[:N, :, None, None]  # [N, C, H, W] + [N, C]-> [N, C, 1, 1]
 
             spatial_shapes = [(H, W)] * N  # the values has two levels with the same shape
