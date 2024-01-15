@@ -230,7 +230,10 @@ class DAIRV2XBaseDataset(Dataset):
 
             if self.load_offset_map:
                 # we project the flow here first
-                inf_lidar2lidar_r, inf_lidar2lidar_t = trans_lidar_i2v(virtuallidar_to_world, lidar_to_novatel, novatel_to_world, system_error_offset)
+                virtuallidar_to_world_path = os.path.join(self.root_dir,'infrastructure-side/calib/virtuallidar_to_world/'+str(inf_frame_id)+'.json')
+                lidar_to_novatel_path = os.path.join(self.root_dir,'vehicle-side/calib/lidar_to_novatel/'+str(veh_frame_id)+'.json')
+                novatel_to_world_path = os.path.join(self.root_dir,'vehicle-side/calib/novatel_to_world/'+str(veh_frame_id)+'.json')
+                inf_lidar2lidar_r, inf_lidar2lidar_t = trans_lidar_i2v(virtuallidar_to_world_path, lidar_to_novatel_path, novatel_to_world_path, system_error_offset)
                 inf2veh_transform = convert_tfm_matrix(inf_lidar2lidar_r, inf_lidar2lidar_t)
                 adjacent_flows = self.load_adjacent_flow(frame_info, time_index, inf2veh_transform)
                 data[0]['params']["adjacent_flows"] = adjacent_flows # None, when some frames are missing
@@ -329,8 +332,8 @@ class DAIRV2XBaseDataset(Dataset):
         if self.train:
             # 训练时随机选择 [0, max_time_delay]
             while True:
-                # time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
-                time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2的指数分布
+                time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
+                # time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2的指数分布
                 if time_index > self.max_time_delay:
                     time_index = self.max_time_delay
                 if self.is_frame_exits(time_index, frame_info):
