@@ -174,7 +174,7 @@ class DAIRV2XBaseDataset(Dataset):
                     data[0]['params']["mask"] = np.full((self.bev_h, self.bev_w), False, dtype=bool)
 
        
-        # Label for single side； 路端是data[1], data[1]['params']['vehicles_single_all']是路端的标签，只是这里统一用了key
+        # Label for single side
         data[0]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
                                 'vehicle-side/label/lidar_backup/{}.json'.format(veh_frame_id)))
         data[0]['params']['vehicles_single_all'] = read_json(os.path.join(self.root_dir, \
@@ -182,7 +182,7 @@ class DAIRV2XBaseDataset(Dataset):
         data[1]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
                                 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
         data[1]['params']['vehicles_single_all'] = read_json(os.path.join(self.root_dir, \
-                                'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
+                                'infrastructure-side/label/virtuallidar_new/{}.json'.format(inf_frame_id)))
 
 
         return data
@@ -257,7 +257,7 @@ class DAIRV2XBaseDataset(Dataset):
         for cav_content in cav_contents:
             cav_content['params']['vehicles_single'] = \
                     cav_content['params']['vehicles_single_front'] if self.label_type == 'camera' else \
-                    cav_content['params']['vehicles_single_all']  # WJJ:为camera的时候使用原始坐标，lidar的时候使用修改后的坐标
+                    cav_content['params']['vehicles_single_all']
         return self.post_processor.generate_object_center_dairv2x_single(cav_contents, suffix)
 
     def get_ext_int(self, params, camera_id):
