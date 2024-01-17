@@ -282,7 +282,7 @@ class DeforEncoder(nn.Module):
            
         split_x = self.regroup(x, record_len)
         C, H, W = split_x[0].shape[1:]
-
+        
         if self.calibrate:
             # norm the calibrated offsets
             offsets[:, :, :, 0] = offsets[:, :, :, 0] / W  # bug: 严重的错误

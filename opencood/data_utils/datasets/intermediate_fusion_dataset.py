@@ -118,16 +118,16 @@ def getIntermediateFusionDataset(cls):
                 selected_cav_processed.update({'processed_features': processed_lidar})
 
             # generate targets label single GT, note the reference pose is itself.
-            object_bbx_center, object_bbx_mask, object_ids = self.generate_object_center(
+            object_bbx_center_single, object_bbx_mask_single, object_ids_single = self.generate_object_center_single(
                 [selected_cav_base], selected_cav_base['params']['lidar_pose']
             )
-            label_dict = self.post_processor.generate_label(
-                gt_box_center=object_bbx_center, anchors=self.anchor_box, mask=object_bbx_mask
+            label_dict_single = self.post_processor.generate_label(
+                gt_box_center=object_bbx_center_single, anchors=self.anchor_box, mask=object_bbx_mask_single
             )
             selected_cav_processed.update({
-                                "single_label_dict": label_dict,
-                                "single_object_bbx_center": object_bbx_center,
-                                "single_object_bbx_mask": object_bbx_mask})
+                                "single_label_dict": label_dict_single,
+                                "single_object_bbx_center": object_bbx_center_single,
+                                "single_object_bbx_mask": object_bbx_mask_single})
 
             # camera
             if self.load_camera_file:

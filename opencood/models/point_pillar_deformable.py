@@ -33,11 +33,23 @@ class PointPillarDeformable(nn.Module):
             self.use_dir = True
             self.dir_head = nn.Conv2d(128 * 3, args['dir_args']['num_bins'] * args['anchor_number'],
                                   kernel_size=1) # BIN_NUM = 2
-        
+        self.supervise_single = args['supervise_single']
         if 'calibrate' in args['base_bev_backbone']['defor_encoder']:
             self.calibrate = args['base_bev_backbone']['defor_encoder']['calibrate']
         else:
             self.calibrate = False
+
+        if 'use_seperate_head' in args and args['use_seperate_head']:
+            self.use_seperate_head = True
+            self.single_cls_head = nn.Conv2d(128 * 2, args['anchor_number'],
+                                        kernel_size=1)
+            self.single_reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'],
+                                    kernel_size=1)
+            if self.use_dir:
+                self.single_dir_head = nn.Conv2d(128 * 3, args['dir_args']['num_bins'] * args['anchor_number'],
+                                  kernel_size=1)
+        else:
+            self.use_seperate_head = False
 
     def forward(self, data_dict):
 
@@ -69,17 +81,37 @@ class PointPillarDeformable(nn.Module):
         batch_dict = self.backbone(batch_dict)
 
         if self.calibrate:
-            spatial_features_2d, coord_predictions = batch_dict['spatial_features_2d']
+            fused_features, coord_predictions = batch_dict['fused_features']
         else:
-            spatial_features_2d = batch_dict['spatial_features_2d']
+            fused_features = batch_dict['fused_features']
 
-        psm = self.cls_head(spatial_features_2d)
-        rm = self.reg_head(spatial_features_2d)
+        psm = self.cls_head(fused_features)
+        rm = self.reg_head(fused_features)
 
         output_dict = {'cls_preds': psm,
                        'reg_preds': rm}
+        
+        if self.supervise_single:
+            single_features = batch_dict['single_features']
+            if self.use_seperate_head:
+                psm_single = self.single_cls_head(single_features)
+                rm_single = self.single_reg_head(single_features)
+                if self.use_dir:
+                    dir_single = self.single_dir_head(single_features)
+            else:
+                psm_single = self.cls_head(single_features)
+                rm_single = self.reg_head(single_features)
+                if self.use_dir:
+                    dir_single = self.dir_head(single_features)
+
+            output_dict.update({'cls_preds_single': psm_single,
+                                'reg_preds_single': rm_single
+                                })
+            if self.use_dir:
+                output_dict.update({'dir_preds_single': dir_single})
+
         if self.use_dir:
-            output_dict.update({'dir_preds': self.dir_head(spatial_features_2d)})
+            output_dict.update({'dir_preds': self.dir_head(fused_features)})
         if self.calibrate:
             output_dict.update({'calibrate': coord_predictions})
             
