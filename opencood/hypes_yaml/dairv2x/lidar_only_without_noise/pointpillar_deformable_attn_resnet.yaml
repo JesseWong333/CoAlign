@@ -20,7 +20,7 @@ noise_setting:
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 4
-  epoches: 40
+  epoches: 20
   eval_freq: 2
   save_freq: 2
   max_cav: &max_cav 5
@@ -99,6 +99,7 @@ model:
       num_features: 64
 
     base_bev_backbone: # backbone will downsample 2x
+      resnet: true
       voxel_size: *voxel_size
       layer_nums: [3, 5, 8]
       layer_strides: [2, 2, 2]
@@ -106,9 +107,19 @@ model:
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
       defor_encoder: 
-        block_cfgs: [[384, 8, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-                    [384, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-                    [384, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
+        block_cfgs: [[384, 16, 4, 16, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
+                    [384, 16, 4, 16, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
+                    [384, 16, 4, 16, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]
+                    ]
+                    
+        # block_cfgs: [
+        #           [384, 16, 1, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
+        #           [384, 16, 1, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
+        #           [384, 16, 1, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
+        #           [384, 16, 1, 0.1, 2, ["self_attn", "norm", "ffn", "norm"]],
+        #           [384, 16, 1, 0.1, 2, ["self_attn", "norm", "ffn", "norm"]],
+        #           [384, 16, 1, 0.1, 2, ["self_attn", "norm", "ffn", "norm"]]
+        #           ]
         bev_h: 100
         bev_w: 252
         embed_dims: 384

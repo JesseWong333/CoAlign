@@ -149,7 +149,7 @@ class FFN(nn.Module):
         return identity + self.dropout_layer(out)
 
 class Block(nn.Module):
-    def __init__(self, embed_dims, num_heads=1, num_points=4, dropout=0.1, max_num_levels=2, cfgs = ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]) -> None:
+    def __init__(self, embed_dims, num_heads_self=1, num_points_self=4, num_heads_cross=1, num_points_cross=4, dropout=0.1, max_num_levels=2, cfgs = ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]) -> None:
         super().__init__()
         # 没有历史信息，第一层或许可以不要self_attn; 问题不大
         # self_attn,norm,cross_attn, norm, ffn, norm
@@ -159,13 +159,13 @@ class Block(nn.Module):
         block_layers = nn.ModuleList()
         for cfg in cfgs:
             if cfg == "self_attn":
-                self_attn = DeforAttn(embed_dims, num_heads, num_points, dropout, max_num_levels=1)
+                self_attn = DeforAttn(embed_dims, num_heads_self, num_points_self, dropout, max_num_levels=1)
                 block_layers.append(self_attn)
             elif cfg == "ffn":
                 ffn = FFN(embed_dims, feedforward_channels = embed_dims*4)
                 block_layers.append(ffn)
             elif cfg == "cross_attn":
-                cross_attn = DeforAttn(embed_dims, num_heads, num_points, dropout, max_num_levels=max_num_levels)
+                cross_attn = DeforAttn(embed_dims, num_heads_cross, num_points_cross, dropout, max_num_levels=max_num_levels)
                 block_layers.append(cross_attn)
             elif cfg == "norm":
                 block_layers.append(nn.LayerNorm(embed_dims))
@@ -283,9 +283,10 @@ class DeforEncoder(nn.Module):
         split_x = self.regroup(x, record_len)
         C, H, W = split_x[0].shape[1:]
 
-        # norm the calibrated offsets
-        offsets[:, :, :, 0] = offsets[:, :, :, 0] / W  # bug: 严重的错误
-        offsets[:, :, :, 1] = offsets[:, :, :, 1] / H
+        if self.calibrate:
+            # norm the calibrated offsets
+            offsets[:, :, :, 0] = offsets[:, :, :, 0] / W  # bug: 严重的错误
+            offsets[:, :, :, 1] = offsets[:, :, :, 1] / H
 
         out = []
         for b, xx in enumerate(split_x):  

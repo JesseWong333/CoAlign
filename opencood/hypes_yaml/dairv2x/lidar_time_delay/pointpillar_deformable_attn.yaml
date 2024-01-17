@@ -100,6 +100,7 @@ model:
       num_features: 64
 
     base_bev_backbone: # backbone will downsample 2x
+      resnet: true
       voxel_size: *voxel_size
       layer_nums: [3, 5, 8]
       layer_strides: [2, 2, 2]
