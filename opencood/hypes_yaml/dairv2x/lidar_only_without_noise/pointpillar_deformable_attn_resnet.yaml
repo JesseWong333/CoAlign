@@ -86,6 +86,8 @@ postprocess:
 model:
   core_method: point_pillar_deformable
   args:
+    use_seperate_head: true
+    supervise_single: true
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
@@ -107,9 +109,9 @@ model:
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
       defor_encoder: 
-        block_cfgs: [[384, 16, 4, 16, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-                    [384, 16, 4, 16, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-                    [384, 16, 4, 16, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]
+        block_cfgs: [[384, 16, 1, 16, 1, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
+                    [384, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
+                    [384, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]
                     ]
                     
         # block_cfgs: [

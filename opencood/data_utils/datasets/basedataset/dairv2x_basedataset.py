@@ -182,7 +182,7 @@ class DAIRV2XBaseDataset(Dataset):
         data[1]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
                                 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
         data[1]['params']['vehicles_single_all'] = read_json(os.path.join(self.root_dir, \
-                                'infrastructure-side/label/virtuallidar_new/{}.json'.format(inf_frame_id)))
+                                'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
 
 
         return data
