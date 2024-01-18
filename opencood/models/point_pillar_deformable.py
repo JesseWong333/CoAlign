@@ -41,9 +41,9 @@ class PointPillarDeformable(nn.Module):
 
         if 'use_seperate_head' in args and args['use_seperate_head']:
             self.use_seperate_head = True
-            self.single_cls_head = nn.Conv2d(128 * 2, args['anchor_number'],
+            self.single_cls_head = nn.Conv2d(128 * 3, args['anchor_number'],
                                         kernel_size=1)
-            self.single_reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'],
+            self.single_reg_head = nn.Conv2d(128 * 3, 7 * args['anchor_number'],
                                     kernel_size=1)
             if self.use_dir:
                 self.single_dir_head = nn.Conv2d(128 * 3, args['dir_args']['num_bins'] * args['anchor_number'],
