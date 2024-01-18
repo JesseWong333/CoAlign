@@ -7,7 +7,7 @@ import torch.nn as nn
 from opencood.models.sub_modules.pillar_vfe import PillarVFE
 from opencood.models.sub_modules.point_pillar_scatter import PointPillarScatter
 from opencood.models.sub_modules.defor_att_bev_backbone import DeforBEVBackbone
-from opencood.models.sub_modules.defor_bev_backbone_resnet import ResNetBEVBackbone
+from opencood.models.sub_modules.defor_bev_backbone_resnet import DeforResNetBEVBackbone
 
 
 class PointPillarDeformable(nn.Module):
@@ -21,7 +21,7 @@ class PointPillarDeformable(nn.Module):
                                     point_cloud_range=args['lidar_range'])
         self.scatter = PointPillarScatter(args['point_pillar_scatter'])
         if 'resnet' in args['base_bev_backbone']:
-            self.backbone = ResNetBEVBackbone(args['base_bev_backbone'], 64)
+            self.backbone = DeforResNetBEVBackbone(args['base_bev_backbone'], 64)
         else:
             self.backbone = DeforBEVBackbone(args['base_bev_backbone'], 64)
         self.cls_head = nn.Conv2d(128 * 3, args['anchor_number'],

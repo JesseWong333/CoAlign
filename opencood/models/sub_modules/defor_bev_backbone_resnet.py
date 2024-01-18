@@ -13,7 +13,7 @@ from opencood.models.sub_modules.resblock import ResNetModified, BasicBlock
 
 DEBUG = False
 
-class ResNetBEVBackbone(nn.Module):
+class DeforResNetBEVBackbone(nn.Module):
     def __init__(self, model_cfg, input_channels=64):
         super().__init__()
         self.model_cfg = model_cfg
@@ -91,7 +91,15 @@ class ResNetBEVBackbone(nn.Module):
 
         self.num_bev_features = c_in
         
-        self.defor_encoder = DeforEncoder(model_cfg['defor_encoder'])
+        if "multi_scale" in model_cfg and model_cfg['multi_scale']:
+            self.multi_scale = True
+            # multiple scale 
+            self.defor_encoders = nn.ModuleList()
+            for cfg in model_cfg['defor_encoder']:
+                self.defor_encoders.append(DeforEncoder(cfg))
+        else:
+            self.multi_scale = False
+            self.defor_encoder = DeforEncoder(model_cfg['defor_encoder'])
 
     def forward(self, data_dict):
         spatial_features = data_dict['spatial_features']
@@ -107,25 +115,60 @@ class ResNetBEVBackbone(nn.Module):
 
         x = self.resnet(spatial_features)  # tuple of features
         ups = []
+        ups_fused = []
 
-        for i in range(self.num_levels):
-            if len(self.deblocks) > 0:
-                ups.append(self.deblocks[i](x[i]))
-            else:
-                ups.append(x[i])
+        if self.multi_scale:
+            for i in range(self.num_levels):
+                # single
+                if len(self.deblocks) > 0:
+                    ups.append(self.deblocks[i](x[i]))
+                else:
+                    ups.append(x[i])
+                # fusion
+                fused_x = self.defor_encoders[i](x[i], record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask']) # B, C, H, W
+                if len(self.deblocks) > 0:
+                    ups_fused.append(self.deblocks[i](fused_x))
+                else:
+                    ups_fused.append(fused_x)
+            
+            if len(ups) > 1:
+                x = torch.cat(ups, dim=1)
+            elif len(ups) == 1:
+                x = ups[0]
+            if len(self.deblocks) > self.num_levels:
+                x = self.deblocks[-1](x)
 
-        if len(ups) > 1:
-            x = torch.cat(ups, dim=1)
-        elif len(ups) == 1:
-            x = ups[0]
+            if len(ups_fused) > 1:
+                fused_x = torch.cat(ups_fused, dim=1)
+            elif len(ups_fused) == 1:
+                fused_x = ups_fused[0]
+            if len(self.deblocks) > self.num_levels:
+                fused_x = self.deblocks[-1](fused_x)
 
-        if len(self.deblocks) > self.num_levels:
-            x = self.deblocks[-1](x)
+            data_dict['single_features'] = x
+            data_dict['fused_features'] = fused_x
+            return data_dict
+        else:
+            for i in range(self.num_levels):
+                if len(self.deblocks) > 0:
+                    ups.append(self.deblocks[i](x[i]))
+                else:
+                    ups.append(x[i])
 
-        x = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
+            if len(ups) > 1:
+                x = torch.cat(ups, dim=1)
+            elif len(ups) == 1:
+                x = ups[0]
 
-        data_dict['spatial_features_2d'] = x
-        return data_dict
+            if len(self.deblocks) > self.num_levels:
+                x = self.deblocks[-1](x)
+
+            x = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
+
+            data_dict['single_features'] = x
+            fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
+            data_dict['fused_features'] = fused_features
+            return data_dict
 
     # these two functions are seperated for multiscale intermediate fusion
     def get_multiscale_feature(self, spatial_features):

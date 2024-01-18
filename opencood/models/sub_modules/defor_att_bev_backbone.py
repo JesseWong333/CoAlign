@@ -116,7 +116,16 @@ class DeforBEVBackbone(nn.Module):
 
         self.num_bev_features = c_in
 
-        self.defor_encoder = DeforEncoder(model_cfg['defor_encoder'])
+        if "multi_scale" in model_cfg and model_cfg['multi_scale']:
+            self.multi_scale = True
+            # multiple scale 
+            self.defor_encoders = nn.ModuleList()
+            for cfg in model_cfg['defor_encoder']:
+                self.defor_encoders.append(DeforEncoder(cfg))
+        else:
+            self.multi_scale = False
+            self.defor_encoder = DeforEncoder(model_cfg['defor_encoder'])
+
 
     def forward(self, data_dict):
         spatial_features = data_dict['spatial_features']
@@ -126,10 +135,10 @@ class DeforBEVBackbone(nn.Module):
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
 
         ups = []
-        ret_dict = {}
+        ups_fused = []
         x = spatial_features
 
-        H, W = x.shape[2:]   #  200, 704
+        H, W = x.shape[2:]
         pairwise_t_matrix = pairwise_t_matrix[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]] # [B, L, L, 2, 3]
 
         pairwise_t_matrix[...,0,1] = pairwise_t_matrix[...,0,1] * H / W
@@ -137,28 +146,61 @@ class DeforBEVBackbone(nn.Module):
         pairwise_t_matrix[...,0,2] = pairwise_t_matrix[...,0,2] / (self.downsample_rate * self.discrete_ratio * W) * 2
         pairwise_t_matrix[...,1,2] = pairwise_t_matrix[...,1,2] / (self.downsample_rate * self.discrete_ratio * H) * 2
 
-        for i in range(len(self.blocks)):
-            x = self.blocks[i](x)
-            if self.compress and i < len(self.compression_modules):
-                x = self.compression_modules[i](x)
-    
-            stride = int(spatial_features.shape[2] / x.shape[2])
-            ret_dict['spatial_features_%dx' % stride] = x
+        # todo: make the two branch into one
+        if self.multi_scale:
+            for i in range(len(self.blocks)):
+                x = self.blocks[i](x)  # 2*B, C, H, W
+                if self.compress and i < len(self.compression_modules):
+                    x = self.compression_modules[i](x)
 
-            if len(self.deblocks) > 0:
-                ups.append(self.deblocks[i](x)) # 用了一层反卷积上采样，把通道变为一样； 就是fpn
-            else:
-                ups.append(x)
+                #single
+                if len(self.deblocks) > 0:
+                    ups.append(self.deblocks[i](x)) # # 2*B, C, H, W
+                else:
+                    ups.append(x)
 
-        if len(ups) > 1:
-            x = torch.cat(ups, dim=1)
-        elif len(ups) == 1:
-            x = ups[0]
+                # fusion
+                fused_x = self.defor_encoders[i](x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask']) # B, C, H, W
+                if len(self.deblocks) > 0:
+                    ups_fused.append(self.deblocks[i](fused_x))
+                else:
+                    ups_fused.append(fused_x)
+            if len(ups) > 1:
+                x = torch.cat(ups, dim=1)
+            elif len(ups) == 1:
+                x = ups[0]
+            if len(self.deblocks) > len(self.blocks):
+                x = self.deblocks[-1](x)
+            
+            if len(ups_fused) > 1:
+                fused_x = torch.cat(ups_fused, dim=1)
+            elif len(ups_fused) == 1:
+                fused_x = ups_fused[0]
+            if len(self.deblocks) > len(self.blocks):
+                fused_x = self.deblocks[-1](fused_x)
+            data_dict['single_features'] = x
+            data_dict['fused_features'] = fused_x
+            return data_dict
+        else:
+            for i in range(len(self.blocks)):
+                x = self.blocks[i](x)
+                if self.compress and i < len(self.compression_modules):
+                    x = self.compression_modules[i](x)
+        
+                if len(self.deblocks) > 0:
+                    ups.append(self.deblocks[i](x)) # 用了一层反卷积上采样，把通道变为一样； 就是fpn
+                else:
+                    ups.append(x)
 
-        if len(self.deblocks) > len(self.blocks):
-            x = self.deblocks[-1](x)
+            if len(ups) > 1:
+                x = torch.cat(ups, dim=1)
+            elif len(ups) == 1:
+                x = ups[0]
 
-        data_dict['single_features'] = x
-        fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
-        data_dict['fused_features'] = fused_features
-        return data_dict
+            if len(self.deblocks) > len(self.blocks):
+                x = self.deblocks[-1](x)
+
+            data_dict['single_features'] = x
+            fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
+            data_dict['fused_features'] = fused_features
+            return data_dict
