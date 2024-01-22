@@ -24,14 +24,14 @@ class PointPillarDeformable(nn.Module):
             self.backbone = DeforResNetBEVBackbone(args['base_bev_backbone'], 64)
         else:
             self.backbone = DeforBEVBackbone(args['base_bev_backbone'], 64)
-        self.cls_head = nn.Conv2d(128 * 3, args['anchor_number'],
+        self.cls_head = nn.Conv2d(args['head_embed_dims'], args['anchor_number'],
                                   kernel_size=1)
-        self.reg_head = nn.Conv2d(128 * 3, 7 * args['anchor_number'],
+        self.reg_head = nn.Conv2d(args['head_embed_dims'], 7 * args['anchor_number'],
                                   kernel_size=1)
         self.use_dir = False
         if 'dir_args' in args.keys():
             self.use_dir = True
-            self.dir_head = nn.Conv2d(128 * 3, args['dir_args']['num_bins'] * args['anchor_number'],
+            self.dir_head = nn.Conv2d(args['head_embed_dims'], args['dir_args']['num_bins'] * args['anchor_number'],
                                   kernel_size=1) # BIN_NUM = 2
         self.supervise_single = args['supervise_single']
         if 'calibrate' in args['base_bev_backbone']['defor_encoder']:
