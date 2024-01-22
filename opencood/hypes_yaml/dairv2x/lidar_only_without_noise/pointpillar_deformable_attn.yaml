@@ -23,7 +23,7 @@ train_params:
   epoches: 40
   eval_freq: 2
   save_freq: 2
-  max_cav: &max_cav 5
+  max_cav: &max_cav 2
 
 input_source: ['lidar']
 label_type: 'lidar'
@@ -87,6 +87,7 @@ model:
   core_method: point_pillar_deformable
   args:
     supervise_single: true
+    use_seperate_head: true
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
@@ -98,7 +99,6 @@ model:
       num_filters: [64]
     point_pillar_scatter:
       num_features: 64
-
     base_bev_backbone: # backbone will downsample 2x
       resnet: true
       voxel_size: *voxel_size
@@ -108,48 +108,22 @@ model:
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
       multi_scale: true
-      defor_encoder:
-        - block_cfgs: [[64, 16, 1, 16, 1, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-                      [64, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-                      [64, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
-          bev_h: 100
-          bev_w: 252
-          embed_dims: 64
-          max_num_features: 2
-          calibrate : &calibrate false
-          flow_pred_max_iter: 4 
-          
-        - block_cfgs: [[128, 16, 1, 16, 1, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-                      [128, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-                      [128, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
-          bev_h: 50
-          bev_w: 126
-          embed_dims: 128
-          max_num_features: 2
-          calibrate : *calibrate
-          flow_pred_max_iter: 4
-          
-        - block_cfgs: [[256, 16, 1, 16, 1, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-                      [256, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-                      [256, 16, 1, 16, 1, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
-          bev_h: 25
-          bev_w: 63
-          embed_dims: 256
-          max_num_features: 2
-          calibrate : *calibrate
-          flow_pred_max_iter: 4   
-      # used when multi_scale is false
-      # multi_scale: false
-      # defor_encoder: 
-      #   block_cfgs: [[384, 8, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-      #               [384, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-      #               [384, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
-      #   bev_h: 100
-      #   bev_w: 252
-      #   embed_dims: 384
-      #   max_num_features: 2
-      #   calibrate : &calibrate false
-      #   flow_pred_max_iter: 4
+      defor_encoder: 
+        bev_h: 100
+        bev_w: 252
+        embed_dims: &embed_dims 128 # 128 for multi-scale; 384 for single scale
+        max_num_agent: *max_cav
+        feature_level: 3
+        calibrate : &calibrate false
+        flow_pred_max_iter: 4
+        block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
+        # block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
+        #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
+        #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
+    head_embed_dims: *embed_dims
+        
 
     dir_args: *dir_args
 

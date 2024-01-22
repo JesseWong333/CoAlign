@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from opencood.models.sub_modules.defor_encoder_multi_scale import DeforEncoderMultiScale
 from opencood.models.sub_modules.defor_encoder import DeforEncoder
 from opencood.models.sub_modules.resblock import ResNetModified, BasicBlock
 
@@ -91,15 +92,23 @@ class DeforResNetBEVBackbone(nn.Module):
 
         self.num_bev_features = c_in
         
-        if "multi_scale" in model_cfg and model_cfg['multi_scale']:
+        if "multi_scale" in model_cfg and model_cfg['multi_scale'] :
             self.multi_scale = True
-            # multiple scale 
-            self.defor_encoders = nn.ModuleList()
-            for cfg in model_cfg['defor_encoder']:
-                self.defor_encoders.append(DeforEncoder(cfg))
+            self.defor_encoder = DeforEncoderMultiScale(model_cfg['defor_encoder'])
         else:
             self.multi_scale = False
             self.defor_encoder = DeforEncoder(model_cfg['defor_encoder'])
+
+        # project multi-feature to the same dimention
+        if self.multi_scale:
+            input_proj_list = []
+            for i, _ in enumerate(range(self.num_levels)):
+                input_proj_list.append(nn.Sequential(
+                    nn.Conv2d(num_filters[i], num_upsample_filters[i], kernel_size=1),  # we use the same size filters as the privious upsample filters
+                    nn.BatchNorm2d(num_upsample_filters[i]),
+                ))
+
+            self.input_proj = nn.ModuleList(input_proj_list)
 
     def forward(self, data_dict):
         spatial_features = data_dict['spatial_features']
@@ -115,91 +124,32 @@ class DeforResNetBEVBackbone(nn.Module):
 
         x = self.resnet(spatial_features)  # tuple of features
         ups = []
-        ups_fused = []
-
-        if self.multi_scale:
-            for i in range(self.num_levels):
-                # single
-                if len(self.deblocks) > 0:
-                    ups.append(self.deblocks[i](x[i]))
-                else:
-                    ups.append(x[i])
-                # fusion
-                fused_x = self.defor_encoders[i](x[i], record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask']) # B, C, H, W
-                if len(self.deblocks) > 0:
-                    ups_fused.append(self.deblocks[i](fused_x))
-                else:
-                    ups_fused.append(fused_x)
-            
-            if len(ups) > 1:
-                x = torch.cat(ups, dim=1)
-            elif len(ups) == 1:
-                x = ups[0]
-            if len(self.deblocks) > self.num_levels:
-                x = self.deblocks[-1](x)
-
-            if len(ups_fused) > 1:
-                fused_x = torch.cat(ups_fused, dim=1)
-            elif len(ups_fused) == 1:
-                fused_x = ups_fused[0]
-            if len(self.deblocks) > self.num_levels:
-                fused_x = self.deblocks[-1](fused_x)
-
-            data_dict['single_features'] = x
-            data_dict['fused_features'] = fused_x
-            return data_dict
-        else:
-            for i in range(self.num_levels):
-                if len(self.deblocks) > 0:
-                    ups.append(self.deblocks[i](x[i]))
-                else:
-                    ups.append(x[i])
-
-            if len(ups) > 1:
-                x = torch.cat(ups, dim=1)
-            elif len(ups) == 1:
-                x = ups[0]
-
-            if len(self.deblocks) > self.num_levels:
-                x = self.deblocks[-1](x)
-
-            x = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
-
-            data_dict['single_features'] = x
-            fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])
-            data_dict['fused_features'] = fused_features
-            return data_dict
-
-    # these two functions are seperated for multiscale intermediate fusion
-    def get_multiscale_feature(self, spatial_features):
-        """
-        before multiscale intermediate fusion
-        """
-        x = self.resnet(spatial_features)  # tuple of features
-        return x
-
-    def decode_multiscale_feature(self, x):
-        """
-        after multiscale interemediate fusion
-        """
-        ups = []
+        ups_multi_scale = []
         for i in range(self.num_levels):
             if len(self.deblocks) > 0:
-                ups.append(self.deblocks[i](x[i]))
+                ups.append(self.deblocks[i](x[i]))  # upsample a feature
             else:
                 ups.append(x[i])
+            
+            if self.multi_scale:
+                ups_multi_scale.append(self.input_proj[i](x[i]))
+
+        # for single supervision, we concatnate multi-scale feature; This is the same as the original point pillar
         if len(ups) > 1:
             x = torch.cat(ups, dim=1)
         elif len(ups) == 1:
             x = ups[0]
-
         if len(self.deblocks) > self.num_levels:
             x = self.deblocks[-1](x)
-        return x
-        
-    def get_layer_i_feature(self, spatial_features, layer_i):
-        """
-        before multiscale intermediate fusion
-        """
-        return eval(f"self.resnet.layer{layer_i}")(spatial_features)  # tuple of features
+        data_dict['single_features'] = x
+
+        # fused supervision
+        if self.multi_scale:
+            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask']) # dim=128
+        else:
+            fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])  # dim=384
+        data_dict['fused_features'] = fused_features
+        return data_dict
+
+
     
