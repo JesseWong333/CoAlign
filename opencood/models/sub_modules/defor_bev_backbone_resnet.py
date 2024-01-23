@@ -10,6 +10,7 @@ import torch.nn as nn
 
 from opencood.models.sub_modules.defor_encoder_multi_scale import DeforEncoderMultiScale
 from opencood.models.sub_modules.defor_encoder import DeforEncoder
+from opencood.models.sub_modules.defor_encoder_multi_scale_single_agent import DeforEncoderMultiScaleSingleAgent
 from opencood.models.sub_modules.resblock import ResNetModified, BasicBlock
 
 DEBUG = False
@@ -95,6 +96,7 @@ class DeforResNetBEVBackbone(nn.Module):
         if "multi_scale" in model_cfg and model_cfg['multi_scale'] :
             self.multi_scale = True
             self.defor_encoder = DeforEncoderMultiScale(model_cfg['defor_encoder'])
+            self.defor_encoder_single = DeforEncoderMultiScaleSingleAgent(model_cfg['defor_encoder_single'])
         else:
             self.multi_scale = False
             self.defor_encoder = DeforEncoder(model_cfg['defor_encoder'])
@@ -121,34 +123,36 @@ class DeforResNetBEVBackbone(nn.Module):
         pairwise_t_matrix[...,1,0] = pairwise_t_matrix[...,1,0] * W / H
         pairwise_t_matrix[...,0,2] = pairwise_t_matrix[...,0,2] / (self.downsample_rate * self.discrete_ratio * W) * 2
         pairwise_t_matrix[...,1,2] = pairwise_t_matrix[...,1,2] / (self.downsample_rate * self.discrete_ratio * H) * 2
-
+        
+        # if we choose multi-scale, both the single supervised branch and fused branch use multi-scale
         x = self.resnet(spatial_features)  # tuple of features
         ups = []
         ups_multi_scale = []
         for i in range(self.num_levels):
-            if len(self.deblocks) > 0:
-                ups.append(self.deblocks[i](x[i]))  # upsample a feature
-            else:
-                ups.append(x[i])
-            
             if self.multi_scale:
-                ups_multi_scale.append(self.input_proj[i](x[i]))
-
-        # for single supervision, we concatnate multi-scale feature; This is the same as the original point pillar
-        if len(ups) > 1:
-            x = torch.cat(ups, dim=1)
-        elif len(ups) == 1:
-            x = ups[0]
-        if len(self.deblocks) > self.num_levels:
-            x = self.deblocks[-1](x)
-        data_dict['single_features'] = x
-
-        # fused supervision
+                ups_multi_scale.append(self.input_proj[i](x[i])) # project all the features to the same dimmension
+            else:
+                if len(self.deblocks) > 0:
+                    ups.append(self.deblocks[i](x[i]))  # upsample a feature
+                else:
+                    ups.append(x[i])
+ 
         if self.multi_scale:
+            single_features = self.defor_encoder_single(ups_multi_scale)
             fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask']) # dim=128
+            data_dict['single_features'] = single_features
+            data_dict['fused_features'] = fused_features
         else:
+            if len(ups) > 1:
+                x = torch.cat(ups, dim=1)
+            elif len(ups) == 1:
+                x = ups[0]
+            if len(self.deblocks) > self.num_levels:
+                x = self.deblocks[-1](x)
+            data_dict['single_features'] = x
             fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])  # dim=384
-        data_dict['fused_features'] = fused_features
+            data_dict['fused_features'] = fused_features
+
         return data_dict
 
 
