@@ -104,7 +104,7 @@ class DeforResNetBEVBackbone(nn.Module):
         # project multi-feature to the same dimention
         if self.multi_scale:
             input_proj_list = []
-            for i, _ in enumerate(range(self.num_levels)):
+            for i, _ in enumerate(range(num_levels)):
                 input_proj_list.append(nn.Sequential(
                     nn.Conv2d(num_filters[i], num_upsample_filters[i], kernel_size=1),  # we use the same size filters as the privious upsample filters
                     nn.BatchNorm2d(num_upsample_filters[i]),
@@ -114,9 +114,9 @@ class DeforResNetBEVBackbone(nn.Module):
 
     def forward(self, data_dict):
         spatial_features = data_dict['spatial_features']
-
         record_len = data_dict['record_len']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
+        
         H, W = spatial_features.shape[2:]
         pairwise_t_matrix = pairwise_t_matrix[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]] # [B, L, L, 2, 3]
         pairwise_t_matrix[...,0,1] = pairwise_t_matrix[...,0,1] * H / W

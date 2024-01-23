@@ -20,7 +20,7 @@ class PointPillarDeformable(nn.Module):
                                     voxel_size=args['voxel_size'],
                                     point_cloud_range=args['lidar_range'])
         self.scatter = PointPillarScatter(args['point_pillar_scatter'])
-        if 'resnet' in args['base_bev_backbone']:
+        if 'resnet' in args['base_bev_backbone'] and args['base_bev_backbone']['resnet']:
             self.backbone = DeforResNetBEVBackbone(args['base_bev_backbone'], 64)
         else:
             self.backbone = DeforBEVBackbone(args['base_bev_backbone'], 64)

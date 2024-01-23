@@ -107,21 +107,21 @@ model:
       num_filters: [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
-      multi_scale: false
+      multi_scale: true
       defor_encoder: 
         bev_h: 100
         bev_w: 252
-        embed_dims: &embed_dims 384 # 128 for multi-scale; 384 for single scale
+        embed_dims: &embed_dims 128 # 128 for multi-scale; 384 for single scale
         max_num_agent: *max_cav
         feature_level: 3
         calibrate : &calibrate false
         flow_pred_max_iter: 4
-        # block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["cross_attn", "norm", "ffn", "norm"]],
-        #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-        #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
-        block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 4, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 4, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
+        block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
+        # block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
+        #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
+        #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
       defor_encoder_single:
         bev_h: 100
         bev_w: 252
