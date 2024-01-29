@@ -1,19 +1,19 @@
 name: dairv2x_point_pillar_lidar_deformable_attn_withoutnoise
-data_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
-root_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-validate_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# data_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
-# root_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-# validate_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# test_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+# data_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
+# root_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+# validate_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+# test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+data_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
+root_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+validate_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+test_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 
 
 noise_setting:
   add_noise: false
   args: 
-    pos_std: 0.2
-    rot_std: 0.2
+    pos_std: 0
+    rot_std: 0
     pos_mean: 0
     rot_mean: 0
 
@@ -142,21 +142,21 @@ model:
 loss:
   core_method: point_pillar_loss
   args:
-    pos_cls_weight: 2.0
+    pos_cls_weight: 1.0
     cls:
       type: 'SigmoidFocalLoss'
       alpha: 0.25
       gamma: 2.0
-      weight: 2.0
+      weight: 1.0
     reg:
       type: 'WeightedSmoothL1Loss'
       sigma: 3.0
       codewise: true
       weight: 2.0
-    dir:
-      type: 'WeightedSoftmaxClassificationLoss'
-      weight: 0.2
-      args: *dir_args
+    # dir:
+    #   type: 'WeightedSoftmaxClassificationLoss'
+    #   weight: 0.2
+    #   args: *dir_args
     calibrate: *calibrate
 
 

@@ -158,8 +158,8 @@ def eval_final_results(result_stat, save_path, infer_info=None):
     else:
         yaml_utils.save_yaml(dump_dict, os.path.join(save_path, f'eval_{infer_info}.yaml'))
 
-    print('The Average Precision at IOU 0.3 is %.2f, '
-          'The Average Precision at IOU 0.5 is %.2f, '
-          'The Average Precision at IOU 0.7 is %.2f' % (ap_30, ap_50, ap_70))
+    print('The Average Precision at IOU 0.3 is %.3f, '
+          'The Average Precision at IOU 0.5 is %.3f, '
+          'The Average Precision at IOU 0.7 is %.3f' % (ap_30, ap_50, ap_70))
 
     return ap_30, ap_50, ap_70
