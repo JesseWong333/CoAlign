@@ -11,6 +11,7 @@ from opencood.models.sub_modules.torch_transformation_utils import warp_affine_s
 from opencood.utils.ms_deform_attn_ops.functions import MSDeformAttnFunction
 from mmdet.models.utils import LearnedPositionalEncoding
 from opencood.models.sub_modules.optical_flow import FlowPred
+from torch.nn.init import normal_
 
 # SelfAttn 和 CrossAttn 可以通用
 class DeforAttn(nn.Module):
@@ -222,6 +223,7 @@ class DeforEncoder(nn.Module):
         
         self.feature_embeds = nn.Parameter(
             torch.Tensor(self.max_num_agent, self.embed_dims))
+        normal_(self.feature_embeds)
         
         if "calibrate" in model_cfg:
             self.calibrate = model_cfg["calibrate"]
