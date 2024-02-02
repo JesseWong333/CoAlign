@@ -77,10 +77,15 @@ class DAIRV2XBaseDataset(Dataset):
         else:
             self.max_time_delay = 0
         
-        if "load_offset_map" in self.params:
-            self.load_offset_map = params["load_offset_map"]
+        if "load_history" in self.params and params["load_history"]:
+            self.load_history = True
         else:
-            self.load_offset_map = False
+            self.load_history = False
+
+        if "history_frame" in self.params:
+            self.history_frame = self.params["history_frame"] 
+        else:
+            self.history_frame = 0
         
         if "bev_h" in self.params:
             self.bev_h = self.params["bev_h"]
@@ -155,25 +160,25 @@ class DAIRV2XBaseDataset(Dataset):
  
         if self.load_lidar_file or self.visualize:
             data[0]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["vehicle_pointcloud_path"]))
-            time_index = self.frame_select(frame_info)
-            if self.max_time_delay == 0:
-                time_index = 0
-            if time_index == 0:
-                data[1]['lidar_np'], _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["infrastructure_pointcloud_path"]))
-            else:
-                data[1]['lidar_np'], _ = \
-                    pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["previous_inf_"+str(time_index)][0]))
-
-            if self.load_offset_map:
-                if frame_info["offset"] != '' and frame_info["mask"] != '' and time_index != 0 \
-                    and np.load(os.path.join(self.root_dir,frame_info["offset"])).shape[0] >= time_index:
-                        data[0]['params']["offset"] = np.load(os.path.join(self.root_dir,frame_info["offset"]))[time_index-1]
-                        data[0]['params']["mask"] = np.load(os.path.join(self.root_dir,frame_info["mask"]))[time_index-1]                
+            data[1]['lidar_np'] = self.load_lidar_timeindex(0, frame_info)
+            
+            if self.load_history:
+                history_frame_index_l, time_index = self.frame_select(frame_info)
+                if history_frame_index_l is None:
+                    if self.train:
+                        return self.retrieve_base_data(random.randint(0, len(self.split_info)-1))
+                    else:
+                        return None
+                data[1]['lidar_np'] = self.load_lidar_timeindex(time_index, frame_info) # over write lidar_np
+                data[1]['lidar_np_history'] = [self.load_lidar_timeindex(index, frame_info) for index in history_frame_index_l]
+                data[1]['time_delay'] = time_index * 100
+                offset_path = os.path.join(self.root_dir, 'offset_maps_fix_flip', 'offset_'+veh_frame_id+'.npy')
+                offset_map = torch.from_numpy(np.load(offset_path))   
+                if time_index == 0:
+                    data[1]['params']["offset"] = torch.zeros((1, self.bev_h, self.bev_w, 2))
                 else:
-                    data[0]['params']["offset"] = np.zeros((self.bev_h, self.bev_w, 2), dtype=np.float32) 
-                    data[0]['params']["mask"] = np.full((self.bev_h, self.bev_w), False, dtype=bool)
-
-       
+                    data[1]['params']["offset"] = offset_map[time_index-1].unsqueeze(0)
+              
         # Label for single side
         data[0]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
                                 'vehicle-side/label/lidar_backup/{}.json'.format(veh_frame_id)))
@@ -183,38 +188,57 @@ class DAIRV2XBaseDataset(Dataset):
                                 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
         data[1]['params']['vehicles_single_all'] = read_json(os.path.join(self.root_dir, \
                                 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
-
-
         return data
     
-    def frame_select(self, frame_info):
-        # 只选，不; 返回一个index, 保证一定有
-        def is_frame_exits(index):
+    @staticmethod
+    def is_frame_exits(index, frame_info):
             if index == 0:
                 return True
             if frame_info["previous_inf_"+str(index)] is not None:
                 return True
             return False
-        
-        if self.train:
-            # 训练时随机选择 [0, max_time_delay]
-            while True:
-                # time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
-                time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2
-                if time_index > self.max_time_delay:
-                    time_index = self.max_time_delay
-
-                if is_frame_exits(time_index):
-                    return time_index
-                else:
-                    continue   
-        else:
-            # 测试时，选择max_time_delay, 没有就再找， 验证应该验证所有的
-            for time_index in range( self.max_time_delay, -1, -1):
-                if is_frame_exits(time_index):
-                    return time_index
     
+    def load_lidar_timeindex(self, time_index, frame_info):
+        if not self.is_frame_exits(time_index, frame_info):
+            return None
+        if time_index == 0:
+            lidar_np, _ = pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["infrastructure_pointcloud_path"]))
+        else:
+            lidar_np, _ = \
+                    pcd_utils.read_pcd(os.path.join(self.root_dir,frame_info["previous_inf_"+str(time_index)][0]))
+        return lidar_np
+    
+    def frame_select(self, frame_info):
+        # return a list of Ids 
+        def is_track_frame_exits(track_n_frame):
+            for i in range(1, track_n_frame):
+                if not self.is_frame_exits(i, frame_info):
+                    return False
+            return True
 
+        if self.train:
+            # 训练时随机选择: time_delay:time_delay + history_frame
+            max_trial = 5
+            for _ in range(max_trial): 
+                time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
+                # 有可能当前的帧全部不满足 todo
+                # time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2
+                # if time_index > self.max_time_delay:
+                #     time_index = self.max_time_delay
+                history_index_list = [index for index in range(time_index, time_index + self.history_frame)] # a list of size, history_frame
+
+                if is_track_frame_exits(time_index + self.history_frame): # 要求每一帧都在，不能缺帧
+                    return history_index_list, time_index
+                else:
+                    continue  
+            return None, None
+        else:
+            # when do test, self.max_time_delay means all the
+            history_index_list = [index for index in range(self.max_time_delay, self.max_time_delay + self.history_frame)]
+            if is_track_frame_exits(self.max_time_delay  + self.history_frame):
+                return history_index_list, self.max_time_delay
+            else:
+                return None, None
 
     def __len__(self):
         return len(self.split_info)

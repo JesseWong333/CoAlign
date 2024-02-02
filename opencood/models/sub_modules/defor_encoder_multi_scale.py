@@ -208,7 +208,7 @@ class DeforEncoderMultiScale(nn.Module):
         for block_cfg in block_cfgs:
             self.blocks.append(Block(*block_cfg))
 
-        # self.blocks = nn.Sequential(blocks) # Sequential只支持单输入，需自己解包
+        self.train_stage = model_cfg['train_satge']
 
         self.bev_h = model_cfg["bev_h"] # 100
         self.bev_w = model_cfg["bev_w"] # 252
@@ -234,8 +234,6 @@ class DeforEncoderMultiScale(nn.Module):
             self.calibrate = model_cfg["calibrate"]
         else:
             self.calibrate = False
-        if self.calibrate:
-            self.flow_pred = FlowPred(model_cfg["flow_pred_max_iter"], model_cfg["embed_dims"])
 
     
     @staticmethod
@@ -258,9 +256,11 @@ class DeforEncoderMultiScale(nn.Module):
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
     
-    def forward(self, mlvl_feats, record_len, pairwise_t_matrix, offsets, offset_masks):
+    def forward(self, mlvl_feats, record_len, pairwise_t_matrix, offsets, pred_offsets):
         """ multi-scale deformable attention
             mlvl_feats: [(Bs, C, h, w)] a list of multi-scale features
+            offsets: [(Bs, h, w, 2)] a list with N-1 agents
+            pred_offset:
         """
         mlvl_feats = [self.regroup(x, record_len) for x in mlvl_feats] # [[(2, C, H, W),...,(2, C, H, W)], [2, C, H1, W1)], []] # 3 by bs//2 list
         # batch level first
@@ -271,8 +271,12 @@ class DeforEncoderMultiScale(nn.Module):
 
         if self.calibrate:
             # norm the calibrated offsets
-            offsets[:, :, :, 0] = offsets[:, :, :, 0] / self.bev_w
-            offsets[:, :, :, 1] = offsets[:, :, :, 1] / self.bev_h
+            if offsets is not None:
+                offsets[:, :, :, 0] = offsets[:, :, :, 0] / self.bev_w
+                offsets[:, :, :, 1] = offsets[:, :, :, 1] / self.bev_h
+            if pred_offsets is not None:
+                pred_offsets[:, :, :, 0] = pred_offsets[:, :, :, 0] / self.bev_w
+                pred_offsets[:, :, :, 1] = pred_offsets[:, :, :, 1] / self.bev_h
 
         out = []
         for b, xx in enumerate(split_x):  
@@ -297,9 +301,18 @@ class DeforEncoderMultiScale(nn.Module):
             ref_2d = self.get_reference_points(
                self.bev_h, self.bev_w, device=feat.device, dtype=feat.dtype) # 1, H*W, 1, 2
             # calibrate ref_2d
-            if offsets is not None and offset_masks is not None and N > 1:
-                # 前N个不调节，后N个调节
-                pass
+            if self.calibrate and N > 1: 
+                if self.train_stage == "stage1":
+                    # use offset GT
+                    offset = offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1) # 1, H*W, N-1, 2 -> 1, H*W, N-1, self.feature_level, 2 
+                else:
+                    # use pred offset
+                    offset = pred_offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1)
+                ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
+                ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N-1, self.feature_level, 1) # 1, H*W, N-1, self.feature_level, 2
+                ref_2d_calibrate = ref_2d_calibrate + offset
+                ref_2d_calibrate = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, (N-1)*self.feature_level, 2 
+                ref_2d = torch.cat([ref_2d.repeat(1, 1, self.feature_level,1), ref_2d_calibrate], dim=2)
             else:
                 ref_2d = ref_2d.repeat(1, 1, N*self.feature_level, 1)  # #1, H*W+...+H3*W3, N, 2
 
@@ -324,9 +337,6 @@ class DeforEncoderMultiScale(nn.Module):
             bev_queries = bev_queries.permute(0, 2, 1).view(1, self.embed_dims, self.bev_h, self.bev_w)  # 就是这个问题，其他的不行也是因为我没有permute
             out.append(bev_queries)
        
-        if self.calibrate:
-            return torch.cat(out, dim=0), coord_predictions # [B, S, N, 2] 大小的tensor list
-        else:
-            return torch.cat(out, dim=0)
+        return torch.cat(out, dim=0)
 
     

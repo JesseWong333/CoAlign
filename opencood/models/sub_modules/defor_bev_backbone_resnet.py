@@ -12,6 +12,7 @@ from opencood.models.sub_modules.defor_encoder_multi_scale import DeforEncoderMu
 from opencood.models.sub_modules.defor_encoder import DeforEncoder
 from opencood.models.sub_modules.defor_encoder_multi_scale_single_agent import DeforEncoderMultiScaleSingleAgent
 from opencood.models.sub_modules.resblock import ResNetModified, BasicBlock
+from opencood.models.sub_modules.torch_transformation_utils import warp_affine_simple
 
 DEBUG = False
 
@@ -112,17 +113,38 @@ class DeforResNetBEVBackbone(nn.Module):
 
             self.input_proj = nn.ModuleList(input_proj_list)
 
+    def get_normalized_transformation(self, H, W, pairwise_t_matrix_c):
+        pairwise_t_matrix = pairwise_t_matrix_c.clone() # avoid in-place
+        pairwise_t_matrix = pairwise_t_matrix[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]] # [B, L, L, 2, 3]
+        pairwise_t_matrix[...,0,1] = pairwise_t_matrix[...,0,1] * H / W
+        pairwise_t_matrix[...,1,0] = pairwise_t_matrix[...,1,0] * W / H
+        pairwise_t_matrix[...,0,2] = pairwise_t_matrix[...,0,2] / (self.downsample_rate * self.discrete_ratio * W) * 2
+        pairwise_t_matrix[...,1,2] = pairwise_t_matrix[...,1,2] / (self.downsample_rate * self.discrete_ratio * H) * 2
+        return pairwise_t_matrix
+
+    def get_projected_bev_features(self, data_dict, batch_index, agent_index):
+        # process one batch, with T frames
+        spatial_features = data_dict['spatial_features']
+        pairwise_t_matrix = data_dict['pairwise_t_matrix']
+        H, W = spatial_features.shape[2:]
+        pairwise_t_matrix = self.get_normalized_transformation(H, W, pairwise_t_matrix)
+
+        multi_scale_feature = self.resnet(spatial_features)
+        batch_features_projected =[]
+        for level_feature in multi_scale_feature:  # x 是cnn出来的多层feature
+            T, _, h, w = level_feature.shape
+            projected_level_feature = warp_affine_simple(level_feature, pairwise_t_matrix[batch_index:batch_index+1, 0, agent_index].repeat(T, 1, 1), (h, w))
+            batch_features_projected.append(projected_level_feature)
+
+        return batch_features_projected
+
     def forward(self, data_dict):
         spatial_features = data_dict['spatial_features']
         record_len = data_dict['record_len']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
         
         H, W = spatial_features.shape[2:]
-        pairwise_t_matrix = pairwise_t_matrix[:,:,:,[0, 1],:][:,:,:,:,[0, 1, 3]] # [B, L, L, 2, 3]
-        pairwise_t_matrix[...,0,1] = pairwise_t_matrix[...,0,1] * H / W
-        pairwise_t_matrix[...,1,0] = pairwise_t_matrix[...,1,0] * W / H
-        pairwise_t_matrix[...,0,2] = pairwise_t_matrix[...,0,2] / (self.downsample_rate * self.discrete_ratio * W) * 2
-        pairwise_t_matrix[...,1,2] = pairwise_t_matrix[...,1,2] / (self.downsample_rate * self.discrete_ratio * H) * 2
+        pairwise_t_matrix = self.get_normalized_transformation(H, W, pairwise_t_matrix)
         
         # if we choose multi-scale, both the single supervised branch and fused branch use multi-scale
         x = self.resnet(spatial_features)  # tuple of features
@@ -139,7 +161,7 @@ class DeforResNetBEVBackbone(nn.Module):
  
         if self.multi_scale:
             single_features = self.defor_encoder_single(ups_multi_scale)
-            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask']) # dim=128
+            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset_GT'], data_dict['pred_offset']) # dim=128
             data_dict['single_features'] = single_features
             data_dict['fused_features'] = fused_features
         else:
@@ -150,7 +172,7 @@ class DeforResNetBEVBackbone(nn.Module):
             if len(self.deblocks) > self.num_levels:
                 x = self.deblocks[-1](x)
             data_dict['single_features'] = x
-            fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask'])  # dim=384
+            fused_features = self.defor_encoder(x, record_len, pairwise_t_matrix, data_dict['offset_GT'], data_dict['pred_offset'])  # dim=384
             data_dict['fused_features'] = fused_features
 
         return data_dict

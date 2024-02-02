@@ -193,16 +193,18 @@ def setup_optimizer(hypes, model):
     model : opencood model
         The pytorch model
     """
+    if isinstance(model, torch.nn.Module):
+        model = model.parameters()
     method_dict = hypes['optimizer']
     optimizer_method = getattr(optim, method_dict['core_method'], None)
     if not optimizer_method:
         raise ValueError('{} is not supported'.format(method_dict['name']))
     if 'args' in method_dict:
-        return optimizer_method(model.parameters(),
+        return optimizer_method(model,
                                 lr=method_dict['lr'],
                                 **method_dict['args'])
     else:
-        return optimizer_method(model.parameters(),
+        return optimizer_method(model,
                                 lr=method_dict['lr'])
 
 

@@ -232,9 +232,6 @@ class DeforEncoderMultiScaleSingleAgent(nn.Module):
             self.calibrate = model_cfg["calibrate"]
         else:
             self.calibrate = False
-        if self.calibrate:
-            self.flow_pred = FlowPred(model_cfg["flow_pred_max_iter"], model_cfg["embed_dims"])
-
     
     @staticmethod
     def get_reference_points(H, W, bs=1, device='cuda', dtype=torch.float):

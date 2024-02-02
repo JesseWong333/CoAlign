@@ -207,11 +207,9 @@ class DeforEncoder(nn.Module):
         for block_cfg in block_cfgs:
             self.blocks.append(Block(*block_cfg))
 
-        # self.blocks = nn.Sequential(blocks) # Sequential只支持单输入，需自己解包
-
         self.bev_h = model_cfg["bev_h"] # 100
         self.bev_w = model_cfg["bev_w"] # 252
-        self.embed_dims = model_cfg["embed_dims"]  # 384 按照原来的大小设置
+        self.embed_dims = model_cfg["embed_dims"]
         self.max_num_agent = model_cfg["max_num_agent"]
 
         self.bev_embedding = nn.Embedding(
@@ -229,9 +227,6 @@ class DeforEncoder(nn.Module):
             self.calibrate = model_cfg["calibrate"]
         else:
             self.calibrate = False
-        if self.calibrate:
-            self.flow_pred = FlowPred(model_cfg["flow_pred_max_iter"], model_cfg["embed_dims"])
-
     
     @staticmethod
     def get_reference_points(H, W, Z=8, num_points_in_pillar=4, dim='3d', bs=1, device='cuda', dtype=torch.float):
@@ -339,16 +334,13 @@ class DeforEncoder(nn.Module):
             xx = xx.view(N, C, -1).permute(0, 2, 1) # N, H*W, C
 
             # h = self.att(xx[:1, ...], xx, xx, ref_2d, spatial_shapes)  # 切片保持维度
-            # 
+            
             for _, block in enumerate(self.blocks):
                 bev_queries, bev_pos, xx, ref_2d, spatial_shapes = block(bev_queries, bev_pos, xx, ref_2d, spatial_shapes)  # [1, h*w, C]
             
-            bev_queries = bev_queries.permute(0, 2, 1).view(1, C, H, W)  # 就是这个问题，其他的不行也是因为我没有permute
+            bev_queries = bev_queries.permute(0, 2, 1).view(1, C, H, W)
             out.append(bev_queries)
        
-        if self.calibrate:
-            return torch.cat(out, dim=0), coord_predictions # [B, S, N, 2] 大小的tensor list
-        else:
             return torch.cat(out, dim=0)
 
     
