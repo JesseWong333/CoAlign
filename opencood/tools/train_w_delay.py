@@ -81,30 +81,6 @@ def main():
     model = train_utils.create_model(hypes)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    if hypes['train_stage'] == 'stage1':
-        # train the detection model
-        for name, value in model.named_parameters():
-            if name.startswith('meta_flow'):
-                value.requires_grad = False
-            else:
-                value.requires_grad = True
-        # setup optimizer
-        params = filter(lambda p: p.requires_grad, model.parameters())
-        optimizer = train_utils.setup_optimizer(hypes, params)
-    elif hypes['train_stage'] == 'stage2':
-        # train the flow model with a trained detection model
-        for name, value in model.named_parameters():
-            if not name.startswith('meta_flow'):
-                value.requires_grad = False
-            else:
-                value.requires_grad = True
-        # setup optimizer
-        params = filter(lambda p: p.requires_grad, model.parameters())
-        optimizer = train_utils.setup_optimizer(hypes, params)
-    else:
-        # optimizer setup
-        optimizer = train_utils.setup_optimizer(hypes, model)
-
     # record lowest validation loss checkpoint.
     lowest_val_loss = 1e5
     lowest_val_epoch = -1

@@ -208,8 +208,6 @@ class DeforEncoderMultiScale(nn.Module):
         for block_cfg in block_cfgs:
             self.blocks.append(Block(*block_cfg))
 
-        self.train_stage = model_cfg['train_satge']
-
         self.bev_h = model_cfg["bev_h"] # 100
         self.bev_w = model_cfg["bev_w"] # 252
         self.embed_dims = model_cfg["embed_dims"]  # 384 按照原来的大小设置
@@ -270,11 +268,13 @@ class DeforEncoderMultiScale(nn.Module):
                 split_x[j].append(b_level)
 
         if self.calibrate:
-            # norm the calibrated offsets
+            # norm the calibrated offsets; 
             if offsets is not None:
+                offsets = offsets.clone()  # avoid inplace changes; which is also used to cal loss
                 offsets[:, :, :, 0] = offsets[:, :, :, 0] / self.bev_w
                 offsets[:, :, :, 1] = offsets[:, :, :, 1] / self.bev_h
             if pred_offsets is not None:
+                pred_offsets = pred_offsets.clone()
                 pred_offsets[:, :, :, 0] = pred_offsets[:, :, :, 0] / self.bev_w
                 pred_offsets[:, :, :, 1] = pred_offsets[:, :, :, 1] / self.bev_h
 
@@ -302,7 +302,7 @@ class DeforEncoderMultiScale(nn.Module):
                self.bev_h, self.bev_w, device=feat.device, dtype=feat.dtype) # 1, H*W, 1, 2
             # calibrate ref_2d
             if self.calibrate and N > 1: 
-                if self.train_stage == "stage1":
+                if self.training:
                     # use offset GT
                     offset = offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1) # 1, H*W, N-1, 2 -> 1, H*W, N-1, self.feature_level, 2 
                 else:

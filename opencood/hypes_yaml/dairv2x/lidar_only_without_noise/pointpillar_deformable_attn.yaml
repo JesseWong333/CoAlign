@@ -13,7 +13,6 @@ test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 # -->train with deformable attn: calibrate=False
 # calibrate = True
 # 3 stage training: 1) train model with GT offset 2) train flow model 3)finetune all
-train_stage: &train_satge "stage1" 
 time_delay: 5  # max time delay
 load_history: true
 bev_h: &bev_h 100
@@ -98,7 +97,7 @@ model:
   core_method: point_pillar_deformable
   args:
     calibrate: &calibrate true
-    train_stage: *train_satge
+    # train_stage: *train_satge
     meta_flow:
       embed_dims: 128
       n_frame: *history_frame
@@ -138,7 +137,7 @@ model:
       num_upsample_filter: [128, 128, 128]
       multi_scale: true
       defor_encoder: 
-        train_satge: *train_satge
+        # train_satge: *train_satge
         bev_h: *bev_h
         bev_w: *bev_w
         embed_dims: &embed_dims 128 # 128 for multi-scale; 384 for single scale
@@ -184,7 +183,7 @@ loss:
     #   type: 'WeightedSoftmaxClassificationLoss'
     #   weight: 0.2
     #   args: *dir_args
-    calibrate: true
+    calibrate: *calibrate
 
 optimizer:
   core_method: Adam
