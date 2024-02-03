@@ -29,6 +29,7 @@ class PointPillarDeformable(nn.Module):
         self.reg_head = nn.Conv2d(args['head_embed_dims'], 7 * args['anchor_number'],
                                   kernel_size=1)
         self.use_dir = False
+        self.train_stage = args['train_stage']
         if 'dir_args' in args.keys():
             self.use_dir = True
             self.dir_head = nn.Conv2d(args['head_embed_dims'], args['dir_args']['num_bins'] * args['anchor_number'],
@@ -37,7 +38,8 @@ class PointPillarDeformable(nn.Module):
         if 'calibrate' in args and args['calibrate']:
             self.calibrate = True
             # create calibrate model
-            self.meta_flow = MetaFlow(args['meta_flow'])
+            if self.train_stage != 'stage1':
+                self.meta_flow = MetaFlow(args['meta_flow'])
         else:
             self.calibrate = False
 
@@ -52,7 +54,6 @@ class PointPillarDeformable(nn.Module):
                                   kernel_size=1)
         else:
             self.use_seperate_head = False
-        self.train_stage = args['train_stage']
 
     @torch.no_grad()
     def get_batch_pillar_features(self, batch_history_lidar, pairwise_t_matrix, agent_index):
