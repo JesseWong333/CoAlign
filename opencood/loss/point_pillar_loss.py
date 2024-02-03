@@ -30,10 +30,9 @@ class PointPillarLoss(nn.Module):
         else:
             self.iou = None
         
-        if 'calibrate' in args:
-            self.calibrate = args['calibrate']
-        else:
-            self.calibrate = False
+        if 'train_stage' in args:
+            self.train_stage = args['train_stage']
+
         self.loss_dict = {}
 
     def forward(self, output_dict, target_dict, suffix=""):
@@ -97,7 +96,7 @@ class PointPillarLoss(nn.Module):
             self.loss_dict.update({'dir_loss': dir_loss.item()})
 
         ######### calibrate loss #########
-        if self.calibrate and suffix=="":
+        if self.train_stage == "stage2" and suffix=="":
             pred_offset = output_dict["pred_offset"] # B, H*W, n_agent, 2
             target_offset = target_dict['offset']
             cat_weight_map = torch.ones_like(target_offset)

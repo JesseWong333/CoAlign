@@ -111,10 +111,6 @@ def main():
 
     # define the loss
     criterion = train_utils.create_loss(hypes)
-
-    # optimizer setup
-    optimizer = train_utils.setup_optimizer(hypes, model)
-    # lr scheduler setup
     
     # if we want to train from last checkpoint.
     if opt.model_dir:

@@ -184,6 +184,10 @@ class DAIRV2XBaseDataset(Dataset):
                                 'vehicle-side/label/lidar_backup/{}.json'.format(veh_frame_id)))
         data[0]['params']['vehicles_single_all'] = read_json(os.path.join(self.root_dir, \
                                 'vehicle-side/label/lidar/{}.json'.format(veh_frame_id)))
+        if self.load_history:
+            # for single supervised,  we should also load the history
+            inf_frame_id = self.get_infid_with_timeindex(time_index, frame_info)
+        
         data[1]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
                                 'infrastructure-side/label/virtuallidar/{}.json'.format(inf_frame_id)))
         data[1]['params']['vehicles_single_all'] = read_json(os.path.join(self.root_dir, \
@@ -192,12 +196,19 @@ class DAIRV2XBaseDataset(Dataset):
     
     @staticmethod
     def is_frame_exits(index, frame_info):
-            if index == 0:
-                return True
-            if frame_info["previous_inf_"+str(index)] is not None:
-                return True
-            return False
+        if index == 0:
+            return True
+        if frame_info["previous_inf_"+str(index)] is not None:
+            return True
+        return False
     
+    def get_infid_with_timeindex(self, time_index, frame_info):
+        if time_index == 0:
+            inf_id = frame_info["infrastructure_pointcloud_path"].split("/")[-1].replace(".pcd", "")
+        else:
+            inf_id = frame_info["previous_inf_"+str(time_index)][0].split("/")[-1].replace(".pcd", "")
+        return inf_id
+
     def load_lidar_timeindex(self, time_index, frame_info):
         if not self.is_frame_exits(time_index, frame_info):
             return None
@@ -313,3 +324,4 @@ class DAIRV2XBaseDataset(Dataset):
         object_bbx_mask = tmp_dict['object_bbx_mask']
 
         return lidar_np, object_bbx_center, object_bbx_mask
+    

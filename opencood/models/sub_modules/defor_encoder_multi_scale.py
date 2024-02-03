@@ -208,7 +208,7 @@ class DeforEncoderMultiScale(nn.Module):
         for block_cfg in block_cfgs:
             self.blocks.append(Block(*block_cfg))
 
-        self.train_stage = model_cfg['train_satge']
+        self.train_stage = model_cfg['train_stage']
 
         self.bev_h = model_cfg["bev_h"] # 100
         self.bev_w = model_cfg["bev_w"] # 252
@@ -272,9 +272,11 @@ class DeforEncoderMultiScale(nn.Module):
         if self.calibrate:
             # norm the calibrated offsets
             if offsets is not None:
+                offsets = offsets.clone()
                 offsets[:, :, :, 0] = offsets[:, :, :, 0] / self.bev_w
                 offsets[:, :, :, 1] = offsets[:, :, :, 1] / self.bev_h
             if pred_offsets is not None:
+                pred_offsets = pred_offsets.clone()
                 pred_offsets[:, :, :, 0] = pred_offsets[:, :, :, 0] / self.bev_w
                 pred_offsets[:, :, :, 1] = pred_offsets[:, :, :, 1] / self.bev_h
 
