@@ -120,7 +120,7 @@ def getIntermediateFusionDataset(cls):
                 if 'lidar_np_history' in selected_cav_base:
                     lidar_np_history_l = selected_cav_base['lidar_np_history'] # a list of lidar points
                     lidar_np_history_l = [shuffle_points(lidar) for lidar in lidar_np_history_l]
-                    lidar_np_history_l = [mask_ego_points(lidar) for lidar in lidar_np_history_l]
+                    # lidar_np_history_l = [mask_ego_points(lidar) for lidar in lidar_np_history_l]
                     if self.proj_first:
                         pass # we do not project
                     processed_lidar_history_l = [self.pre_processor.preprocess(lidar) for lidar in lidar_np_history_l]

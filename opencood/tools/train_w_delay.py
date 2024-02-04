@@ -14,6 +14,7 @@ from tensorboardX import SummaryWriter
 import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils
 from opencood.data_utils.datasets import build_dataset
+from collections import OrderedDict
 import glob
 from icecream import ic
 import random
@@ -41,7 +42,6 @@ def train_parser():
     opt = parser.parse_args()
     return opt
 
-
 def main():
     opt = train_parser()
     hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
@@ -62,7 +62,7 @@ def main():
     max_time_delay = hypes['time_delay']
 
     val_loaders = []
-    for time_delay in range(max_time_delay):
+    for time_delay in range(max_time_delay+1):
         hypes.update({"time_delay": time_delay})
         opencood_validate_dataset = build_dataset(hypes,
                                                 visualize=False,
@@ -92,12 +92,15 @@ def main():
         params = filter(lambda p: p.requires_grad, model.parameters())
         optimizer = train_utils.setup_optimizer(hypes, params)
     elif hypes['train_stage'] == 'stage2':
+        assert 'stage1_model' in hypes
+        main_model_dict = torch.load(hypes['stage1_model'])
+        model.load_state_dict(main_model_dict, strict=False) # missing meta_flow model; 
         # train the flow model with a trained detection model
         for name, value in model.named_parameters():
-            if not name.startswith('meta_flow'):
-                value.requires_grad = False
+            if name.startswith('meta_flow'):
+                value.requires_grad = True # Note, the BN of is still updating
             else:
-                value.requires_grad = True
+                value.requires_grad = False
         # setup optimizer
         params = filter(lambda p: p.requires_grad, model.parameters())
         optimizer = train_utils.setup_optimizer(hypes, params)
@@ -147,6 +150,9 @@ def main():
                 continue
             # the model will be evaluation mode during validation
             model.train()
+            if hypes['train_stage'] == 'stage2':
+                model.eval()  # we call eval(), just inorder to avoid the norm layer update
+                model.meta_flow.train() 
             model.zero_grad()
             optimizer.zero_grad()
             batch_data = train_utils.to_device(batch_data, device)
@@ -156,7 +162,7 @@ def main():
             final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
             criterion.logging(epoch, i, len(train_loader), writer)
 
-            if supervise_single_flag:
+            if supervise_single_flag and hypes['train_stage'] == 'stage1':
                 final_loss += criterion(ouput_dict, batch_data['ego']['label_dict_single'], suffix="_single")
                 criterion.logging(epoch, i, len(train_loader), writer, suffix="_single")
 
@@ -232,4 +238,4 @@ def main():
         os.system(cmd)
 
 if __name__ == '__main__':
-    main()   
+    main()  

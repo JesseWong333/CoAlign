@@ -38,7 +38,7 @@ class PointPillarDeformable(nn.Module):
         if 'calibrate' in args and args['calibrate']:
             self.calibrate = True
             # create calibrate model
-            if self.train_stage != 'stage1':
+            if self.train_stage == 'stage2':
                 self.meta_flow = MetaFlow(args['meta_flow'])
         else:
             self.calibrate = False
@@ -102,15 +102,15 @@ class PointPillarDeformable(nn.Module):
             
             offsets = [offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for offset in offset_GT_l]
             offsets = torch.cat(offsets, dim=2) # Bs, h*w, n_agent, 2
-            if self.train_stage != 'stage1':
+            if self.train_stage == 'stage1':
+                batch_dict.update({'offset_GT': offsets,
+                                'pred_offset': None
+                                })
+            elif self.train_stage == 'stage2':
                 pred_offsets = [pred_offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for pred_offset in predicted_offset_l]
                 pred_offsets = torch.cat(pred_offsets, dim=2)
                 batch_dict.update({'offset_GT': offsets,
                                 'pred_offset': pred_offsets
-                                })
-            else:
-                batch_dict.update({'offset_GT': offsets,
-                                'pred_offset': None
                                 })
         else:
             batch_dict.update({'offset_GT': None,

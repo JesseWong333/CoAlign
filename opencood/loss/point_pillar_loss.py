@@ -65,6 +65,21 @@ class PointPillarLoss(nn.Module):
         if f'dm{suffix}' in output_dict:
             output_dict[f'dir_preds{suffix}'] = output_dict[f'dm{suffix}']
 
+        ######### calibrate loss #########
+        if self.train_stage == "stage2" and suffix=="":
+            pred_offset = output_dict["pred_offset"] # B, H*W, n_agent, 2
+            target_offset = target_dict['offset']
+            cat_weight_map = torch.ones_like(target_offset)
+            mask = (target_offset == 0)
+            cat_weight_map[mask] = 0.005
+            valid_pixel_num = torch.nonzero(target_offset).size(0) # torch.nonzero: return index
+            loss_map = nn.SmoothL1Loss(reduction='none')(pred_offset, target_offset)
+            offset_loss = torch.sum(loss_map * cat_weight_map) / (valid_pixel_num + 1)
+
+            # total_loss += offset_loss
+            self.loss_dict.update({'offset_loss': offset_loss.item()})
+            return offset_loss
+        
         total_loss = 0
 
         # cls loss
@@ -94,20 +109,6 @@ class PointPillarLoss(nn.Module):
             dir_loss = dir_loss.sum() * self.dir['weight'] / batch_size
             total_loss += dir_loss
             self.loss_dict.update({'dir_loss': dir_loss.item()})
-
-        ######### calibrate loss #########
-        if self.train_stage == "stage2" and suffix=="":
-            pred_offset = output_dict["pred_offset"] # B, H*W, n_agent, 2
-            target_offset = target_dict['offset']
-            cat_weight_map = torch.ones_like(target_offset)
-            mask = (target_offset == 0)
-            cat_weight_map[mask] = 0.005
-            valid_pixel_num = torch.nonzero(target_offset).size(0) # torch.nonzero: return index
-            loss_map = nn.SmoothL1Loss(reduction='none')(pred_offset, target_offset)
-            offset_loss = torch.sum(loss_map * cat_weight_map) / (valid_pixel_num + 1)
-
-            total_loss += offset_loss
-            self.loss_dict.update({'offset_loss': offset_loss.item()})
 
         ######## IoU ###########
         if self.iou:
