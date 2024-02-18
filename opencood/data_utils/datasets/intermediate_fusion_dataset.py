@@ -486,7 +486,7 @@ def getIntermediateFusionDataset(cls):
 
             # a list for every no ego agent
             no_ego_info_dcit = OrderedDict()
-            for cav_id in range(1, self.max_cav):
+            for cav_id in range(1, self.max_cav): # todo: ego is not always 0
                 no_ego_info_dcit[cav_id] = {}
                 no_ego_info_dcit[cav_id]['offset'] = []
                 no_ego_info_dcit[cav_id]['time_delay'] = []

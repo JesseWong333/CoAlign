@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 import copy
-
+from PIL import Image
 from opencood.tools.inference_utils import get_cav_box
 import opencood.visualization.simple_plot3d.canvas_3d as canvas_3d
 import opencood.visualization.simple_plot3d.canvas_bev as canvas_bev
@@ -51,7 +51,7 @@ def visualize(infer_result, pcd, pc_range, save_path, method='3d', left_hand=Fal
 
         if pred_box_tensor is not None:
             pred_box_np = pred_box_tensor.cpu().numpy()
-            pred_name = ['pred'] * pred_box_np.shape[0]
+            pred_name = [''] * pred_box_np.shape[0] # ['pred'] * pred_box_np.shape[0]
 
             score = infer_result.get("score_tensor", None)
             if score is not None:
@@ -137,12 +137,14 @@ def visualize(infer_result, pcd, pc_range, save_path, method='3d', left_hand=Fal
         else:
             raise(f"Not Completed for f{method} visualization.")
 
-        plt.axis("off")
+        # plt.axis("off")
 
-        plt.imshow(canvas.canvas)
-        plt.tight_layout()
-        plt.savefig(save_path, transparent=False, dpi=500)
-        plt.clf()
-        plt.close()
+        # plt.imshow(canvas.canvas)
+        # plt.tight_layout()
+        # plt.savefig(save_path, transparent=False, dpi=500)
+        # plt.clf()
+        # plt.close()
+        img = Image.fromarray(canvas.canvas)
+        img.save(save_path)
 
 

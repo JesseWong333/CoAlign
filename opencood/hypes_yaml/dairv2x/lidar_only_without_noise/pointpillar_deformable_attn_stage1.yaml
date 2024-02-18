@@ -14,7 +14,7 @@ test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 # calibrate = True
 # 3 stage training: 1) train model with GT offset 2) train flow model 3)finetune all
 train_stage: &train_stage "stage1" 
-stage1_model: ./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withoutnoise_2024_02_03_17_27_28/net_epoch_bestval_at13.pth
+# stage1_model: ./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withoutnoise_2024_02_03_17_27_28/net_epoch_bestval_at13.pth
 time_delay: 5  # max time delay
 load_history: true
 bev_h: &bev_h 100
@@ -118,6 +118,7 @@ model:
         embed_dims: 128
     supervise_single: true
     use_seperate_head: true
+
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
@@ -173,7 +174,6 @@ model:
                   [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]],
                   [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]]]
     head_embed_dims: *embed_dims
-        
     dir_args: *dir_args
 
 
