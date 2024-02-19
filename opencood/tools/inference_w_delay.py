@@ -82,8 +82,8 @@ def main():
     # This is used in visualization
     # left hand: OPV2V, V2XSet
     # right hand: V2X-Sim 2.0 and DAIR-V2X
-    left_hand = True if ("OPV2V" in hypes['test_dir'] or "V2XSET" in hypes['test_dir']) else False
-
+    # left_hand = True if ("OPV2V" in hypes['test_dir'] or "V2XSET" in hypes['test_dir']) else False
+    left_hand = True
     print(f"Left hand visualizing: {left_hand}")
 
     if 'box_align' in hypes.keys():

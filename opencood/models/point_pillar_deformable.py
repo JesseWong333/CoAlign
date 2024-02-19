@@ -29,7 +29,8 @@ class PointPillarDeformable(nn.Module):
         self.reg_head = nn.Conv2d(args['head_embed_dims'], 7 * args['anchor_number'],
                                   kernel_size=1)
         self.use_dir = False
-        self.train_stage = args['train_stage']
+        if 'train_stage' in args:
+            self.train_stage = args['train_stage']
         if 'dir_args' in args.keys():
             self.use_dir = True
             self.dir_head = nn.Conv2d(args['head_embed_dims'], args['dir_args']['num_bins'] * args['anchor_number'],

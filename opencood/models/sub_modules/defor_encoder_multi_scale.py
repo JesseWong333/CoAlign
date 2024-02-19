@@ -207,8 +207,8 @@ class DeforEncoderMultiScale(nn.Module):
         block_cfgs = model_cfg["block_cfgs"]
         for block_cfg in block_cfgs:
             self.blocks.append(Block(*block_cfg))
-
-        self.train_stage = model_cfg['train_stage']
+        if 'train_stage' in model_cfg:
+            self.train_stage = model_cfg['train_stage']
 
         self.bev_h = model_cfg["bev_h"] # 100
         self.bev_w = model_cfg["bev_w"] # 252

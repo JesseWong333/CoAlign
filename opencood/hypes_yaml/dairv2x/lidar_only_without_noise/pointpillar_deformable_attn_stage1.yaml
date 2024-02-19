@@ -118,6 +118,7 @@ model:
         embed_dims: 128
     supervise_single: true
     use_seperate_head: true
+
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
@@ -173,7 +174,6 @@ model:
                   [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]],
                   [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]]]
     head_embed_dims: *embed_dims
-        
     dir_args: *dir_args
 
 
