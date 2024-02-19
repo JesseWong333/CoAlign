@@ -107,13 +107,13 @@ def get_pairwise_transformation_with_history(base_data_dict, max_cav, time_index
                 ego_id = cav_id
         ego_pose = x_to_world(base_data_dict[ego_id]['params']['lidar_pose'])
 
-        base_data_dict = OrderedDict(sorted(base_data_dict.items(), key=lambda x: x[0]))
-        for cav_id, cav_content in base_data_dict.items():  # base_data_dict没有按照index顺序
-            if cav_content['ego']:
-                continue
+        # base_data_dict = OrderedDict(sorted(base_data_dict.items(), key=lambda x: x[0]))
+        for cav_id, cav_content in base_data_dict.items():
             lidar_info_history = cav_content['params_history']
             lidar_pose_history_T = [x_to_world(info['lidar_pose']) for info in lidar_info_history] 
             t_list.append(lidar_pose_history_T)
+
+        lidar_pose_history_T = cav_content['params_history']
 
         # t_list: agent_index, time_index, 4, 4
         for i, one_agent_l in enumerate(t_list):

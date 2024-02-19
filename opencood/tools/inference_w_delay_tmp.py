@@ -96,9 +96,9 @@ def main():
 
     print('Loading Model from checkpoint')
     saved_path = opt.model_dir
-    resume_epoch, model = train_utils.load_saved_model(saved_path, model)
-    print(f"resume from {resume_epoch} epoch.")
-    opt.note += f"_epoch{resume_epoch}"
+    # resume_epoch, model = train_utils.load_saved_model(saved_path, model)
+    # print(f"resume from {resume_epoch} epoch.")
+    # opt.note += f"_epoch{resume_epoch}"
     
     if torch.cuda.is_available():
         model.cuda()
@@ -128,8 +128,6 @@ def main():
     AP50 = []
     AP70 = []
     for time_delay, data_loader in enumerate(val_loaders):
-        if time_delay in [0, 1, 2, 3, 4]:
-            continue
         infer_info = opt.fusion_method + opt.note + 'delay_' + str(time_delay*100) + 'ms'
 
         # Create the dictionary for evaluation

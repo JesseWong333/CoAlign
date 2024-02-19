@@ -142,6 +142,7 @@ class DeforResNetBEVBackbone(nn.Module):
         spatial_features = data_dict['spatial_features']
         record_len = data_dict['record_len']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
+        ego_ids = data_dict['ego_ids']
         
         H, W = spatial_features.shape[2:]
         pairwise_t_matrix = self.get_normalized_transformation(H, W, pairwise_t_matrix)
@@ -161,7 +162,7 @@ class DeforResNetBEVBackbone(nn.Module):
  
         if self.multi_scale:
             single_features = self.defor_encoder_single(ups_multi_scale)
-            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset_GT'], data_dict['pred_offset']) # dim=128
+            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset_GT'], data_dict['pred_offset'], ego_ids) # dim=128
             data_dict['single_features'] = single_features
             data_dict['fused_features'] = fused_features
         else:

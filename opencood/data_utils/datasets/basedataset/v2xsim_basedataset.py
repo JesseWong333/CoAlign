@@ -216,11 +216,17 @@ class V2XSIMBaseDataset(Dataset):
             for cav_id in scene:
                 if cav_id == 'prev':
                     continue
+
                 if data[f'{cav_id}']['ego']:
                     # for ego, no time_delay
-                    continue
-                history_frame_index_l, time_index = self.frame_select(scene)
-
+                    time_index = 0
+                    history_frame_index_l = [index for index in range(time_index, time_index + self.history_frame)]
+                    if not self.is_track_frame_exits(scene, time_index + self.history_frame): # 要求每一帧都在，不能缺帧
+                       return None
+                else:
+                    history_frame_index_l, time_index = self.frame_select(scene)
+                if history_frame_index_l is None:
+                    return None
                 history_info = self.load_info_history(time_index, scene, cav_id) # lidar, pose, box_label
                 data[f'{cav_id}']['lidar_np'] = history_info[0]  # over write lidar_np
                 data[f'{cav_id}']['params_single'] = history_info[1]  # only used for single supervision
@@ -228,13 +234,14 @@ class V2XSIMBaseDataset(Dataset):
                 data[f'{cav_id}']['lidar_np_history'] = [history_info[0] for history_info in history_infos]
                 data[f'{cav_id}']['params_history'] = [history_info[1] for history_info in history_infos]
 
-                data[f'{cav_id}']['time_delay'] = time_index * 100
+                data[f'{cav_id}']['time_delay'] = time_index * 200
                 offset_path = os.path.join(self.data_dir, 'offset_maps', self.id_token_dict[idx] + '.npy')
                 offset_map = torch.from_numpy(np.load(offset_path)) # ego_agent, agent, time_delay, h, w, 2
                 if time_index == 0:
                     data[f'{cav_id}']['params']['offset'] = torch.zeros((1, self.bev_h, self.bev_w, 2))
                 else:
                     data[f'{cav_id}']['params']['offset'] = offset_map[ego_id-1, cav_id-1, time_index-1, :, :, :].unsqueeze(0)
+        data = OrderedDict(sorted(data.items(), key=lambda x: x[0]))
         return data
     
     @staticmethod
@@ -265,20 +272,20 @@ class V2XSIMBaseDataset(Dataset):
             return True
         return False
     
-    def frame_select(self, frame_info):
-        def is_track_frame_exits(track_n_frame):
+    def is_track_frame_exits(self, frame_info, track_n_frame):
             for i in range(1, track_n_frame):
                 if not self.is_frame_exits(i, frame_info):
                     return False
             return True
-         
+    
+    def frame_select(self, frame_info):     
         if self.train:
             # 训练时随机选择
             max_trial = 5
             for _ in range(max_trial):
                 time_index = random.randint(0, self.max_time_delay)
                 history_index_list = [index for index in range(time_index, time_index + self.history_frame)]
-                if is_track_frame_exits(time_index + self.history_frame): # 要求每一帧都在，不能缺帧
+                if self.is_track_frame_exits(frame_info, time_index + self.history_frame): # 要求每一帧都在，不能缺帧
                     return history_index_list, time_index
                 else:
                     continue 
@@ -286,7 +293,7 @@ class V2XSIMBaseDataset(Dataset):
         else:
             # when do test, self.max_time_delay means all the
             history_index_list = [index for index in range(self.max_time_delay, self.max_time_delay + self.history_frame)]
-            if is_track_frame_exits(self.max_time_delay  + self.history_frame):
+            if self.is_track_frame_exits(frame_info, self.max_time_delay  + self.history_frame):
                 return history_index_list, self.max_time_delay
             else:
                 return None, None

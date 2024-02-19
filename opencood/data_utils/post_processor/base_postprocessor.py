@@ -295,7 +295,7 @@ class BasePostprocessor(object):
 
         gt_boxes = cav_contents[0]['params']['vehicles'] # notice [N,10], 10 includes [x,y,z,dx,dy,dz,w,a,b,c]
         object_ids = cav_contents[0]['params']['object_ids']
-        lidar_np = cav_contents[0]['lidar_np']
+        # lidar_np = cav_contents[0]['lidar_np'] 
         
         tmp_object_dict = {"gt_boxes": gt_boxes, "object_ids":object_ids}
 
@@ -306,8 +306,8 @@ class BasePostprocessor(object):
                                         output_dict,
                                         reference_lidar_pose,
                                         filter_range,
-                                        self.params['order'],
-                                        lidar_np=lidar_np)
+                                        self.params['order'])
+#                                       lidar_np=lidar_np)
 
         object_np = np.zeros((self.params['max_num'], 7))
         mask = np.zeros(self.params['max_num'])

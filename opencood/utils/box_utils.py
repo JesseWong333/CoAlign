@@ -517,8 +517,7 @@ def project_world_objects_v2x(object_dict,
                           output_dict,
                           reference_lidar_pose,
                           lidar_range,
-                          order,
-                          lidar_np):
+                          order):
     """
     Project the objects under world coordinates into another coordinate
     based on the provided extrinsic.

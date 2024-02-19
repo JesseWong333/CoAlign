@@ -85,32 +85,23 @@ class PointPillarDeformable(nn.Module):
                       'voxel_coords': voxel_coords,
                       'voxel_num_points': voxel_num_points,
                       'record_len': record_len,
-                      'pairwise_t_matrix': pairwise_t_matrix}
-            
+                      'pairwise_t_matrix': pairwise_t_matrix,
+                      'ego_ids': data_dict['ego_ids']}
+        # Dair-v2x: 一个batch中，所有的inf折叠
+        # V2X-sim: 一个batch中，一个协同场景的其他CAV_ID折叠， batch层面分开做
         if self.calibrate:
             assert 'calibrate_data' in data_dict
-            # create a list of dict
-            offset_GT_l = []
-            predicted_offset_l = []
-            for cav_id in data_dict['calibrate_data']:
-                offset_GT = data_dict['calibrate_data'][cav_id]['offset']  # 这个可能小于batch_size, record_len中记录了这个信息
-                offset_GT_l.append(offset_GT)
-                time_delay = data_dict['calibrate_data'][cav_id]['time_delay']
-                if self.train_stage != 'stage1': # for stage1, we use the GT, save memory
-                    lidar_history_features = self.get_batch_pillar_features(data_dict['calibrate_data'][cav_id]['lidar_history'], pairwise_t_matrix, cav_id)
-                    predicted_offset = self.meta_flow(lidar_history_features, time_delay)
-                    predicted_offset_l.append(predicted_offset)
-            
-            offsets = [offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for offset in offset_GT_l]
-            offsets = torch.cat(offsets, dim=2) # Bs, h*w, n_agent, 2
+            # offset_GT [ num_agent*h*w*2, num_agent*h*w*2, ... ] # 不需要改变
+        
             if self.train_stage == 'stage1':
-                batch_dict.update({'offset_GT': offsets,
+                batch_dict.update({'offset_GT': data_dict['calibrate_data']['offset'],
                                 'pred_offset': None
                                 })
             elif self.train_stage == 'stage2':
+                # todo: predict the offset
                 pred_offsets = [pred_offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for pred_offset in predicted_offset_l]
                 pred_offsets = torch.cat(pred_offsets, dim=2)
-                batch_dict.update({'offset_GT': offsets,
+                batch_dict.update({'offset_GT': data_dict['calibrate_data']['offset'],
                                 'pred_offset': pred_offsets
                                 })
         else:

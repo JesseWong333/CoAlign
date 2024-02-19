@@ -256,7 +256,13 @@ class DeforEncoderMultiScale(nn.Module):
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
     
-    def forward(self, mlvl_feats, record_len, pairwise_t_matrix, offsets, pred_offsets):
+    def norm_offset(self, offset):
+        offset = offset.clone()
+        offset[:, :, :, 0] = offset[:, :, :, 0] / self.bev_w
+        offset[:, :, :, 1] = offset[:, :, :, 1] / self.bev_h
+        return offset
+        
+    def forward(self, mlvl_feats, record_len, pairwise_t_matrix, offsets, pred_offsets, ego_ids):
         """ multi-scale deformable attention
             mlvl_feats: [(Bs, C, h, w)] a list of multi-scale features
             offsets: [(Bs, h, w, 2)] a list with N-1 agents
@@ -272,26 +278,24 @@ class DeforEncoderMultiScale(nn.Module):
         if self.calibrate:
             # norm the calibrated offsets
             if offsets is not None:
-                offsets = offsets.clone()
-                offsets[:, :, :, 0] = offsets[:, :, :, 0] / self.bev_w
-                offsets[:, :, :, 1] = offsets[:, :, :, 1] / self.bev_h
+                offsets = [ self.norm_offset(offset) for offset in offsets]
             if pred_offsets is not None:
-                pred_offsets = pred_offsets.clone()
-                pred_offsets[:, :, :, 0] = pred_offsets[:, :, :, 0] / self.bev_w
-                pred_offsets[:, :, :, 1] = pred_offsets[:, :, :, 1] / self.bev_h
+                pred_offsets = [self.norm_offset(offset) for offset in pred_offsets]
 
         out = []
         for b, xx in enumerate(split_x):  
             # input: xx: [ (N, C_0, H_0, W_0), (N, C_1, H_1, W_1), (N, C_2, H_2, W_2) ]
+            ego_id = ego_ids[b]
+            offset = offsets[b]
             N = xx[0].shape[0]
-            t_matrix = pairwise_t_matrix[b][:N, :N, :, :]
+            t_matrix = pairwise_t_matrix[b][:N, 0, :, :]  # B, agent_index, time_index, 2, 3
           
             feat_flatten = []
             spatial_shapes = []
             # treat both the num of agent and feature level as feature level; intotal 6 feature levels
             for lvl, feat in enumerate(xx):
                 _, c, h, w = feat.shape
-                feat = warp_affine_simple(feat, t_matrix[0, :, :, :], (h, w))  # 0 is ego
+                feat = warp_affine_simple(feat, t_matrix[:, :, :], (h, w))  # 0 is ego
                 spatial_shape = (h, w)
                 feat = feat.flatten(2).transpose(1, 2) # N, h*w, C
                 feat = feat + self.level_embeds[None, lvl:lvl + 1, :].to(feat.dtype)
@@ -303,18 +307,23 @@ class DeforEncoderMultiScale(nn.Module):
             ref_2d = self.get_reference_points(
                self.bev_h, self.bev_w, device=feat.device, dtype=feat.dtype) # 1, H*W, 1, 2
             # calibrate ref_2d
-            if self.calibrate and N > 1: 
+            if self.calibrate: 
                 if self.train_stage == "stage1":
                     # use offset GT
-                    offset = offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1) # 1, H*W, N-1, 2 -> 1, H*W, N-1, self.feature_level, 2 
+                    # N, H, W, 2 -> N, H*W, 2 -> H*W, N, 2 -> H*W, N, self.feature_level, 2 -> 1, H*W, N, self.feature_level, 2
+                    offset = offset.flatten(start_dim=1, end_dim=2).permute(1, 0, 2).unsqueeze(2).repeat(1, 1, self.feature_level, 1).unsqueeze(0)
+                    ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
+                    ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N, self.feature_level, 1) # 1, H*W, N, self.feature_level, 2
+                    ref_2d_calibrate = ref_2d_calibrate + offset
+                    ref_2d = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, N*self.feature_level, 2 
                 else:
-                    # use pred offset
+                    # use pred offset: ego always output 0
                     offset = pred_offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1)
-                ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
-                ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N-1, self.feature_level, 1) # 1, H*W, N-1, self.feature_level, 2
-                ref_2d_calibrate = ref_2d_calibrate + offset
-                ref_2d_calibrate = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, (N-1)*self.feature_level, 2 
-                ref_2d = torch.cat([ref_2d.repeat(1, 1, self.feature_level,1), ref_2d_calibrate], dim=2)
+                    ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
+                    ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N-1, self.feature_level, 1) # 1, H*W, N-1, self.feature_level, 2
+                    ref_2d_calibrate = ref_2d_calibrate + offset
+                    ref_2d_calibrate = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, (N-1)*self.feature_level, 2 
+                    ref_2d = torch.cat([ref_2d.repeat(1, 1, self.feature_level,1), ref_2d_calibrate], dim=2)
             else:
                 ref_2d = ref_2d.repeat(1, 1, N*self.feature_level, 1)  # #1, H*W+...+H3*W3, N, 2
 

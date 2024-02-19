@@ -120,7 +120,7 @@ def getIntermediatelatencyFusionDataset(cls):
                 if 'lidar_np_history' in selected_cav_base:
                     lidar_np_history_l = selected_cav_base['lidar_np_history'] # a list of lidar points
                     lidar_np_history_l = [shuffle_points(lidar) for lidar in lidar_np_history_l]
-                    lidar_np_history_l = [mask_ego_points(lidar) for lidar in lidar_np_history_l]
+                    # lidar_np_history_l = [mask_ego_points(lidar) for lidar in lidar_np_history_l]
                     if self.proj_first:
                         pass # we do not project
                     processed_lidar_history_l = [self.pre_processor.preprocess(lidar) for lidar in lidar_np_history_l]
@@ -132,8 +132,10 @@ def getIntermediatelatencyFusionDataset(cls):
             # generate targets label single GT, note the reference pose is itself.
             if 'params_single' in selected_cav_base:
                 # use the single pose, which might be a history pose
+                single_cav_base = {}
+                single_cav_base['params'] = selected_cav_base['params_single'] # params_single is history label
                 object_bbx_center_single, object_bbx_mask_single, object_ids_single = self.generate_object_center_single(
-                    [selected_cav_base], selected_cav_base['params_single']['lidar_pose']
+                    [single_cav_base], single_cav_base['params']['lidar_pose']
                 )
             else:
                 object_bbx_center_single, object_bbx_mask_single, object_ids_single = self.generate_object_center_single(
@@ -271,9 +273,10 @@ def getIntermediatelatencyFusionDataset(cls):
                     ego_lidar_pose = cav_content['params']['lidar_pose']
                     ego_cav_base = cav_content
                     break
-                
-            assert cav_id == list(base_data_dict.keys())[
-                0], "The first element in the OrderedDict must be ego"
+            
+            # now the ego don't have to be the first one
+            # assert cav_id == list(base_data_dict.keys())[
+            #     0], "The first element in the OrderedDict must be ego" 
             assert ego_id != -1
             assert len(ego_lidar_pose) > 0
 
@@ -322,7 +325,7 @@ def getIntermediatelatencyFusionDataset(cls):
                 from opencood.models.sub_modules.box_align_v2 import box_alignment_relative_sample_np
                 stage1_content = self.stage1_result[str(idx)]
                 if stage1_content is not None:
-                    all_agent_id_list = stage1_content['cav_id_list'] # include those out of range
+                    all_agent_id_list = stage1_content['cav_id_list'] # include those out of range      
                     all_agent_corners_list = stage1_content['pred_corner3d_np_list']
                     all_agent_uncertainty_list = stage1_content['uncertainty_np_list']
 
@@ -352,7 +355,7 @@ def getIntermediatelatencyFusionDataset(cls):
             pairwise_t_matrix = \
                 get_pairwise_transformation_with_history(base_data_dict,
                                                 self.max_cav,
-                                                self.max_time_delay,
+                                                self.history_frame,
                                                 self.proj_first)
 
             lidar_poses = np.array(lidar_pose_list).reshape(-1, 6)  # [N_cav, 6]
@@ -492,13 +495,10 @@ def getIntermediatelatencyFusionDataset(cls):
             # pairwise transformation matrix
             pairwise_t_matrix_list = []
 
-            # a list for every no ego agent
-            no_ego_info_dcit = OrderedDict()
-            for cav_id in range(1, self.max_cav+1):
-                no_ego_info_dcit[str(cav_id)] = {}
-                no_ego_info_dcit[str(cav_id)]['offset'] = []
-                no_ego_info_dcit[str(cav_id)]['time_delay'] = []
-                no_ego_info_dcit[str(cav_id)]['lidar_history'] = []
+            ego_ids = []
+
+            # 在cav_id层面折叠
+            history_info = [ {"offset":[], "time_delay":[], "lidar_history":[]} for _ in range(len(batch))]
 
             # disconet
             teacher_processed_lidar_list = []
@@ -513,6 +513,8 @@ def getIntermediatelatencyFusionDataset(cls):
 
             for i in range(len(batch)):
                 ego_dict = batch[i]['ego']
+
+                ego_ids.append(ego_dict['ego_id'])
                 object_bbx_center.append(ego_dict['object_bbx_center'])
                 object_bbx_mask.append(ego_dict['object_bbx_mask'])
                 object_ids.append(ego_dict['object_ids'])
@@ -544,21 +546,9 @@ def getIntermediatelatencyFusionDataset(cls):
                 # For no ego agent, history frames; we need to do padding 
                 for cav_id, agent_dict in batch[i].items():
                     if cav_id != 'ego':
-                       no_ego_info_dcit[cav_id]['offset'].append(agent_dict['offset'])
-                       no_ego_info_dcit[cav_id]['time_delay'].append(agent_dict['time_delay'])  # 不同batch有的agent数量，不一样怎么处理； V2X-sim天然是dynamic的
-                       no_ego_info_dcit[cav_id]['lidar_history'].append(agent_dict['processed_lidar_history'])
-                # for cav_id in range(1, self.max_cav):
-                #     if cav_id not in batch[i]: # do padding
-                #         offset_ = torch.zeros(1, self.bev_h, self.bev_w, 2)
-                #         time_delay_ = 0.0
-                #         processed_lidar_history_ = None
-                #     else:
-                #         offset_ = batch[i][cav_id]['offset']
-                #         time_delay_ = batch[i][cav_id]['time_delay']
-                #         processed_lidar_history_ = batch[i][cav_id]['processed_lidar_history']
-                #     no_ego_info_dcit[cav_id]['offset'].append(offset_)
-                #     no_ego_info_dcit[cav_id]['time_delay'].append(time_delay_)
-                #     no_ego_info_dcit[cav_id]['lidar_history'].append(processed_lidar_history_)
+                        history_info[i]['offset'].append(agent_dict['offset'] )
+                        history_info[i]['time_delay'].append(agent_dict['time_delay'])
+                        history_info[i]['lidar_history'].append(agent_dict['processed_lidar_history'])
             # convert to numpy, (B, max_num, 7)
             object_bbx_center = torch.from_numpy(np.array(object_bbx_center))
             object_bbx_mask = torch.from_numpy(np.array(object_bbx_mask))
@@ -602,7 +592,9 @@ def getIntermediatelatencyFusionDataset(cls):
                                     'pairwise_t_matrix': pairwise_t_matrix,
                                     'lidar_pose_clean': lidar_pose_clean,
                                     'lidar_pose': lidar_pose,
-                                    'anchor_box': self.anchor_box_torch})
+                                    'anchor_box': self.anchor_box_torch,
+                                    'ego_ids': ego_ids
+                                    })
 
             if self.visualize:
                 origin_lidar = \
@@ -630,19 +622,10 @@ def getIntermediatelatencyFusionDataset(cls):
                     "object_bbx_mask_single": torch.cat(object_bbx_mask_single, dim=0)
                 })
 
-            output_dict['ego']['calibrate_data'] = OrderedDict()
-            for cav_id in range(1, self.max_cav):
-                # output_dict[cav_id] = {}
-                # output_dict[cav_id]['offset'] = torch.cat(no_ego_info_dcit[cav_id]['offset'], dim=0)
-                # output_dict[cav_id]['time_delay'] =  torch.tensor(no_ego_info_dcit[cav_id]['time_delay'])
-                # output_dict[cav_id]['lidar_history'] = no_ego_info_dcit[cav_id]['lidar_history']  # still a list
-                # we still write all the history under the ego key, just to make it compatible with previous codes
-                output_dict['ego']['calibrate_data'][cav_id] = {}
-                output_dict['ego']['calibrate_data'][cav_id]['offset'] = \
-                                                    torch.cat(no_ego_info_dcit[str(cav_id)]['offset'], dim=0) if len(no_ego_info_dcit[str(cav_id)]['offset']) > 0 else None
-                output_dict['ego']['calibrate_data'][cav_id]['time_delay'] =  \
-                                                    torch.tensor(no_ego_info_dcit[str(cav_id)]['time_delay']) if len(no_ego_info_dcit[str(cav_id)]['time_delay']) > 0 else None
-                output_dict['ego']['calibrate_data'][cav_id]['lidar_history'] = no_ego_info_dcit[str(cav_id)]['lidar_history']  # still a list
+            output_dict['ego']['calibrate_data'] = {}
+            output_dict['ego']['calibrate_data']['offset'] = [ torch.cat(one_scene['offset'], dim=0) for one_scene in history_info]                                        
+            output_dict['ego']['calibrate_data']['time_delay'] =  [ torch.tensor(one_scene['time_delay']) for one_scene in history_info]                          
+            output_dict['ego']['calibrate_data']['lidar_history'] = [ one_scene['lidar_history'] for one_scene in history_info]
 
             return output_dict
 
