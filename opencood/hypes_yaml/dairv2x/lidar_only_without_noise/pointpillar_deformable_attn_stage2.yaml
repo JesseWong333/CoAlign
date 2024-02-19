@@ -1,16 +1,16 @@
 name: dairv2x_point_pillar_lidar_deformable_attn_withoutnoise
-data_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
-root_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-validate_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# data_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
-# root_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-# validate_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# test_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+# data_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
+# root_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+# validate_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+# test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+data_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
+root_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+validate_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+test_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 
 # 或许直接训练所有的也可
 train_stage: &train_stage "stage2" 
-stage1_model: ./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withoutnoise_2024_02_03_17_27_28/net_epoch_bestval_at13.pth
+stage1_model: ./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withoutnoise_2024_02_04_17_36_48/net_epoch_bestval_at13.pth
 time_delay: 5  # max time delay
 load_history: true
 bev_h: &bev_h 100
@@ -27,7 +27,7 @@ noise_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 3
+  batch_size: &batch_size 4
   epoches: 20
   eval_freq: 2
   save_freq: 2
@@ -204,7 +204,7 @@ loss:
 # for stage2
 optimizer:
   core_method: Adam
-  lr: 0.0001 # for stage2; stage1 0.002
+  lr: 0.0002 # for stage2; stage1 0.002
   args:
     eps: 1e-10
     # weight_decay: 1e-4
