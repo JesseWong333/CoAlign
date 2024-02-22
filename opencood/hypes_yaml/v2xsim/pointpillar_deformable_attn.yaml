@@ -1,8 +1,12 @@
 name: v2x-sim_point_pillar_lidar_deformable_attn_withoutnoise
-data_dir: /data/datasets/V2X-smi/V2X-Sim-2.0
-root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
-validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
-test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
+# data_dir: /data/datasets/V2X-smi/V2X-Sim-2.0
+# root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
+# validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
+# test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
+data_dir: /mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi
+root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_train.pkl'
+validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
+test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
 
 bev_h: &bev_h 80
 bev_w: &bev_w 80
@@ -26,7 +30,7 @@ train_params:
 input_source: ['lidar']
 label_type: 'lidar'
 
-comm_range: 50
+comm_range: 500
 
 fusion:
   core_method: 'intermediate'
@@ -118,12 +122,12 @@ model:
         #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
         #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
         # cross first
-        block_cfgs: [[*embed_dims, 8, 8, 8, 8, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                  [*embed_dims, 8, 8, 8, 8, 0.1, *max_cav, 3, ["self_attn", "norm", "ffn", "norm"]],
-                  [*embed_dims, 8, 8, 8, 8, 0.1, *max_cav, 3, ["self_attn", "norm", "ffn", "norm"]]]
+        block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, *max_cav, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                  [*embed_dims, 8, 4, 8, 4, 0.1, *max_cav, 3, ["self_attn", "norm", "ffn", "norm"]],
+                  [*embed_dims, 8, 4, 8, 4, 0.1, *max_cav, 3, ["self_attn", "norm", "ffn", "norm"]]]
         # single scale
         # block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 2, ["cross_attn", "norm", "ffn", "norm"]],
         #             [*embed_dims, 8, 4, 8, 4, 0.1, 2, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
@@ -139,12 +143,12 @@ model:
         # block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
         #             [*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]],
         #             [*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["self_attn", "norm", "cross_attn", "norm", "ffn", "norm"]]]
-        block_cfgs: [[*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]],
-                    [*embed_dims, 8, 8, 8, 8, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]]]
+        block_cfgs: [[*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["cross_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]],
+                    [*embed_dims, 8, 4, 8, 4, 0.1, 1, 3, ["self_attn", "norm", "ffn", "norm"]]]
     head_embed_dims: *embed_dims
         
     dir_args: *dir_args

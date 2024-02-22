@@ -32,7 +32,7 @@ class V2XSIMBaseDataset(Dataset):
         self.pre_processor = build_preprocessor(params["preprocess"], train)
         self.post_processor = build_postprocessor(params["postprocess"], train)
         self.data_augmentor = DataAugmentor(params['data_augment'], train)
-
+        self.data_dir = params['data_dir']
         if self.train:
             root_dir = params['root_dir']
         else:
@@ -105,7 +105,7 @@ class V2XSIMBaseDataset(Dataset):
                 self.scene_database[i][cav_id]['lidar'] = scene_info[f'lidar_path_{cav_id}']
                 # need to delete this line is running in /GPFS
                 self.scene_database[i][cav_id]['lidar'] = \
-                    self.scene_database[i][cav_id]['lidar'].replace("/GPFS/rhome/yifanlu/workspace/dataset/v2xsim2-complete", "dataset/V2X-Sim-2.0")
+                    self.scene_database[i][cav_id]['lidar'].replace("/data/datasets/V2X-smi/V2X-Sim-2.0", self.data_dir)
 
                 self.scene_database[i][cav_id]['params'] = OrderedDict()
                 self.scene_database[i][cav_id][
