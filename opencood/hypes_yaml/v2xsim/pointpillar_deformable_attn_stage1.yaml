@@ -1,5 +1,5 @@
 name: v2xsim_point_pillar_lidar_deformable_attn
-data_dir: /data/datasets/V2X-smi/V2X-Sim-2.0
+data_dir: /hd_cache/datasets/V2X-Sim-2.0
 root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
 validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
 test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
@@ -24,7 +24,7 @@ noise_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 4
+  batch_size: &batch_size 6
   epoches: 20
   eval_freq: 2
   save_freq: 2

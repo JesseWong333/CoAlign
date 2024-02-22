@@ -92,13 +92,17 @@ class PointPillarDeformable(nn.Module):
         if self.calibrate:
             assert 'calibrate_data' in data_dict
             # offset_GT [ num_agent*h*w*2, num_agent*h*w*2, ... ] # 不需要改变
-        
             if self.train_stage == 'stage1':
                 batch_dict.update({'offset_GT': data_dict['calibrate_data']['offset'],
                                 'pred_offset': None
                                 })
             elif self.train_stage == 'stage2':
-                # todo: predict the offset
+                # data_dict['calibrate_data']['lidar_history']: list [  [cav_id_1, cav_id_2, cav_id_3] , []]
+                # time_delay [ tensor, ...]
+                for batch_cav_history in data_dict['calibrate_data']['lidar_history']:
+                    for cav_id in batch_cav_history:
+                        pass
+                lidar_history_features = self.get_batch_pillar_features(data_dict['calibrate_data']['lidar_history'], pairwise_t_matrix, cav_id)
                 pred_offsets = [pred_offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for pred_offset in predicted_offset_l]
                 pred_offsets = torch.cat(pred_offsets, dim=2)
                 batch_dict.update({'offset_GT': data_dict['calibrate_data']['offset'],

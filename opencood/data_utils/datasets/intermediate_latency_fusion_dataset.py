@@ -351,11 +351,11 @@ def getIntermediatelatencyFusionDataset(cls):
                             base_data_dict[cav_id]['params']['lidar_pose'] = cur_agnet_pose[i].tolist()
 
 
-            
             pairwise_t_matrix = \
                 get_pairwise_transformation_with_history(base_data_dict,
                                                 self.max_cav,
                                                 self.history_frame,
+                                                ego_lidar_pose,
                                                 self.proj_first)
 
             lidar_poses = np.array(lidar_pose_list).reshape(-1, 6)  # [N_cav, 6]

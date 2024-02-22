@@ -97,7 +97,7 @@ class V2XSIMBaseDataset(Dataset):
         self.ego_mode = 'one'  # "all"
 
         self.reinitialize()
-
+    
     def reinitialize(self):
         self.scene_database = OrderedDict()
         if self.ego_mode == 'one':
@@ -112,7 +112,8 @@ class V2XSIMBaseDataset(Dataset):
         self.id_token_dict = {self.token_id_dict[key]:key for key in self.token_id_dict}
 
         for i, scene_info in enumerate(self.dataset_info_pkl):
-            self.scene_database.update({i: OrderedDict()}) # scene_database, frame_info 用数字做key
+            scene_token = scene_info['token']
+            self.scene_database.update({scene_token: OrderedDict()})
             cav_num = scene_info['agent_num']
             assert cav_num > 0
 
@@ -121,36 +122,33 @@ class V2XSIMBaseDataset(Dataset):
             else:
                 cav_ids = list(range(1, cav_num + 1))
             
-            self.scene_database[i]['prev'] = OrderedDict()
+            self.scene_database[scene_token]['prev'] = OrderedDict()
             for key in scene_info['prev_samples']:
-                if scene_info['prev_samples'][key] is not None:
-                    self.scene_database[i]['prev'][key] = self.token_id_dict[scene_info['prev_samples'][key]]
-                else:
-                    self.scene_database[i]['prev'][key] = None
+                self.scene_database[scene_token]['prev'][key] = scene_info['prev_samples'][key]
 
             for j, cav_id in enumerate(cav_ids):
                 if j > self.max_cav - 1:
                     print('too many cavs reinitialize')
                     break
                 # 随机选择一个做ego 每个agent的字段有lidar， lidar_pose， gt_boxes_global， cav_id
-                self.scene_database[i][cav_id] = OrderedDict()
+                self.scene_database[scene_token][cav_id] = OrderedDict()
 
-                self.scene_database[i][cav_id]['ego'] = j==0 # cav_ids shuffle 了， 相当于随机选了一个做ego
+                self.scene_database[scene_token][cav_id]['ego'] = j==0 # cav_ids shuffle 了， 相当于随机选了一个做ego
 
-                self.scene_database[i][cav_id]['lidar'] = scene_info[f'lidar_path_{cav_id}']
+                self.scene_database[scene_token][cav_id]['lidar'] = scene_info[f'lidar_path_{cav_id}']
                 # need to delete this line is running in /GPFS
-                # self.scene_database[i][cav_id]['lidar'] = \
-                #     self.scene_database[i][cav_id]['lidar'].replace("/GPFS/rhome/yifanlu/workspace/dataset/v2xsim2-complete", "/data/datasets/V2X-smi/V2X-Sim-2.0") # change here
+                self.scene_database[scene_token][cav_id]['lidar'] = \
+                    self.scene_database[scene_token][cav_id]['lidar'].replace("/data/datasets/V2X-smi/V2X-Sim-2.0", self.data_dir)
 
-                self.scene_database[i][cav_id]['params'] = OrderedDict()
-                self.scene_database[i][cav_id][
+                self.scene_database[scene_token][cav_id]['params'] = OrderedDict()
+                self.scene_database[scene_token][cav_id][
                     'params']['lidar_pose'] = tfm_to_pose(
                         scene_info[f"lidar_pose_{cav_id}"]
                     )  # [x, y, z, roll, pitch, yaw]
-                self.scene_database[i][cav_id]['params'][
+                self.scene_database[scene_token][cav_id]['params'][
                     'vehicles'] = scene_info[f'labels_{cav_id}'][
                         'gt_boxes_global']
-                self.scene_database[i][cav_id]['params'][
+                self.scene_database[scene_token][cav_id]['params'][
                     'object_ids'] = scene_info[f'labels_{cav_id}'][
                         'gt_object_ids'].tolist()
 
@@ -197,7 +195,8 @@ class V2XSIMBaseDataset(Dataset):
         #     'cav_id1': ,
         #     ...
         # }
-        scene = self.scene_database[idx]  # 这里的scene指一帧
+        token = self.id_token_dict[idx]
+        scene = self.scene_database[token]  # 这里的scene指一帧
         # v2x-sim的pari-wise_transformation有, ego_index, agent_index, time_index, 
         # lidar-pose, box-pose; 要跟原来的兼容
         ego_id = -1
@@ -235,7 +234,7 @@ class V2XSIMBaseDataset(Dataset):
                 data[f'{cav_id}']['params_history'] = [history_info[1] for history_info in history_infos]
 
                 data[f'{cav_id}']['time_delay'] = time_index * 200
-                offset_path = os.path.join(self.data_dir, 'offset_maps', self.id_token_dict[idx] + '.npy')
+                offset_path = os.path.join(self.data_dir, 'offset_maps', token + '.npy')
                 offset_map = torch.from_numpy(np.load(offset_path)) # ego_agent, agent, time_delay, h, w, 2
                 if time_index == 0:
                     data[f'{cav_id}']['params']['offset'] = torch.zeros((1, self.bev_h, self.bev_w, 2))
@@ -273,7 +272,7 @@ class V2XSIMBaseDataset(Dataset):
         return False
     
     def is_track_frame_exits(self, frame_info, track_n_frame):
-            for i in range(1, track_n_frame):
+            for i in range(track_n_frame):
                 if not self.is_frame_exits(i, frame_info):
                     return False
             return True

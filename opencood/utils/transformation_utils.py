@@ -62,12 +62,12 @@ def get_pairwise_transformation(base_data_dict, max_cav, proj_first):
                 if i != j:
                     # i->j: TiPi=TjPj, Tj^(-1)TiPi = Pj
                     # t_matrix = np.dot(np.linalg.inv(t_list[j]), t_list[i])
-                    t_matrix = np.linalg.solve(t_list[j], t_list[i])  #存储的是i->j的转换(是这个没错), 还是j->i
+                    t_matrix = np.linalg.solve(t_list[j], t_list[i])  #存储的是i->j的转换
                     pairwise_t_matrix[i, j] = t_matrix
 
     return pairwise_t_matrix
 
-def get_pairwise_transformation_with_history(base_data_dict, max_cav, time_index, proj_first):
+def get_pairwise_transformation_with_history(base_data_dict, max_cav, history_frame, ego_pose, proj_first):
     """
     Get pair-wise transformation matrix accross different agents.
 
@@ -88,7 +88,7 @@ def get_pairwise_transformation_with_history(base_data_dict, max_cav, time_index
         shape: (L, L, 4, 4), L is the max cav number in a scene
         pairwise_t_matrix[i, j] is Tji, i_to_j
     """
-    pairwise_t_matrix = np.tile(np.eye(4), (max_cav, time_index+1, 1, 1)) # (L, T, 4, 4)
+    pairwise_t_matrix = np.tile(np.eye(4), (max_cav, history_frame, 1, 1)) # (L, T, 4, 4)
 
     if proj_first:
         # if lidar projected to ego first, then the pairwise matrix
@@ -100,25 +100,16 @@ def get_pairwise_transformation_with_history(base_data_dict, max_cav, time_index
     else:
         t_list = []
 
-        # save all transformation matrix in a list in order first.
-        ego_id = -1
-        for cav_id, cav_content in base_data_dict.items():
-            if cav_content['ego']:
-                ego_id = cav_id
-        ego_pose = x_to_world(base_data_dict[ego_id]['params']['lidar_pose'])
-
         # base_data_dict = OrderedDict(sorted(base_data_dict.items(), key=lambda x: x[0]))
         for cav_id, cav_content in base_data_dict.items():
             lidar_info_history = cav_content['params_history']
             lidar_pose_history_T = [x_to_world(info['lidar_pose']) for info in lidar_info_history] 
             t_list.append(lidar_pose_history_T)
-
-        lidar_pose_history_T = cav_content['params_history']
-
+        ego_pose = x_to_world(ego_pose)
         # t_list: agent_index, time_index, 4, 4
         for i, one_agent_l in enumerate(t_list):
             for j, history_pose in enumerate(one_agent_l):
-                r_pose = np.linalg.solve(ego_pose, history_pose)
+                r_pose = np.linalg.solve(history_pose, ego_pose)  # bug: 原来记录了history_lidar --> current_ego的； 应该记录ego --> history_lidar; 由于wrap_affine
                 pairwise_t_matrix[i, j] = r_pose
 
     return pairwise_t_matrix
