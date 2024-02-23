@@ -1,9 +1,12 @@
 name: v2xsim_point_pillar_lidar_deformable_attn
-data_dir: /hd_cache/datasets/V2X-Sim-2.0
-root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
-validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
-test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
-
+# data_dir: /hd_cache/datasets/V2X-Sim-2.0
+# root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
+# validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
+# test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
+data_dir: /mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi
+root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_train.pkl'
+validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
+test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
 
 
 train_stage: &train_stage "stage1" 
@@ -24,7 +27,7 @@ noise_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 6
+  batch_size: &batch_size 8
   epoches: 20
   eval_freq: 2
   save_freq: 2
@@ -179,7 +182,7 @@ loss:
       type: 'SigmoidFocalLoss'
       alpha: 0.25
       gamma: 2.0
-      weight: 2.0
+      weight: 1.0
     reg:
       type: 'WeightedSmoothL1Loss'
       sigma: 3.0

@@ -13,7 +13,7 @@ from opencood.utils.common_utils import read_json
 from opencood.utils.transformation_utils import tfm_to_pose
 from opencood.data_utils.pre_processor import build_preprocessor
 from opencood.data_utils.post_processor import build_postprocessor
-from multiprocessing import Manager
+from multiprocessing import shared_memory
 import random
 
 class V2XSIMBaseDataset(Dataset):
@@ -97,7 +97,8 @@ class V2XSIMBaseDataset(Dataset):
         # TODO param: one as ego or all as ego?
         self.ego_mode = 'one'  # "all"
 
-        scene_database = {}
+        # self.scene_database = shared_memory.ShareableList()
+        scene_database_l = []
         if self.ego_mode == 'one':
             self.len_record = len(dataset_info_pkl)
         else:
@@ -109,9 +110,11 @@ class V2XSIMBaseDataset(Dataset):
             self.token_id_dict[scene_info['token']] = i
         self.id_token_dict = {self.token_id_dict[key]:key for key in self.token_id_dict}
 
+        # Dataloader's memory usage keeps increasing, https://github.com/pytorch/pytorch/issues/20433
+
         for i, scene_info in enumerate(dataset_info_pkl):
             scene_token = scene_info['token']
-            scene_database.update({scene_token: OrderedDict()})
+            frame_info = {"token": scene_token}
             cav_num = scene_info['agent_num']
             assert cav_num > 0
 
@@ -120,37 +123,37 @@ class V2XSIMBaseDataset(Dataset):
             else:
                 cav_ids = list(range(1, cav_num + 1))
             
-            scene_database[scene_token]['prev'] = OrderedDict()
+            frame_info['prev'] = OrderedDict()
             for key in scene_info['prev_samples']:
-                scene_database[scene_token]['prev'][key] = scene_info['prev_samples'][key]
+                frame_info['prev'] = scene_info['prev_samples'][key]
 
             for j, cav_id in enumerate(cav_ids):
                 if j > self.max_cav - 1:
                     print('too many cavs reinitialize')
                     break
                 # 随机选择一个做ego 每个agent的字段有lidar， lidar_pose， gt_boxes_global， cav_id
-                scene_database[scene_token][cav_id] = OrderedDict()
+                frame_info[cav_id] = OrderedDict()
 
-                scene_database[scene_token][cav_id]['ego'] = j==0 # cav_ids shuffle 了， 相当于随机选了一个做ego
+                frame_info[cav_id]['ego'] = j==0 # cav_ids shuffle 了， 相当于随机选了一个做ego
 
-                scene_database[scene_token][cav_id]['lidar'] = scene_info[f'lidar_path_{cav_id}']
+                frame_info[cav_id]['lidar'] = scene_info[f'lidar_path_{cav_id}']
                 # need to delete this line is running in /GPFS
-                scene_database[scene_token][cav_id]['lidar'] = \
-                    scene_database[scene_token][cav_id]['lidar'].replace("/data/datasets/V2X-smi/V2X-Sim-2.0", self.data_dir)
+                frame_info[cav_id]['lidar'] = \
+                    self.scene_database[scene_token][cav_id]['lidar'].replace("/data/datasets/V2X-smi/V2X-Sim-2.0", self.data_dir)
 
-                scene_database[scene_token][cav_id]['params'] = OrderedDict()
-                scene_database[scene_token][cav_id][
+                frame_info[cav_id]['params'] = OrderedDict()
+                frame_info[cav_id][
                     'params']['lidar_pose'] = tfm_to_pose(
                         scene_info[f"lidar_pose_{cav_id}"]
                     )  # [x, y, z, roll, pitch, yaw]
-                scene_database[scene_token][cav_id]['params'][
+                frame_info[cav_id]['params'][
                     'vehicles'] = scene_info[f'labels_{cav_id}'][
                         'gt_boxes_global']
-                scene_database[scene_token][cav_id]['params'][
+                frame_info[cav_id]['params'][
                     'object_ids'] = scene_info[f'labels_{cav_id}'][
                         'gt_object_ids'].tolist()
-        manager = Manager()
-        self.scene_database = manager.dict(scene_database)
+            scene_database_l.append(frame_info)
+        self.scene_database = shared_memory.ShareableList(scene_database_l)
 
     def reinitialize(self):
         pass
