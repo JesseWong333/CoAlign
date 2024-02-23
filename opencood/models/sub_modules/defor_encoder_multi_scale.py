@@ -287,6 +287,10 @@ class DeforEncoderMultiScale(nn.Module):
             # input: xx: [ (N, C_0, H_0, W_0), (N, C_1, H_1, W_1), (N, C_2, H_2, W_2) ]
             ego_id = ego_ids[b]
             offset = offsets[b]
+            if pred_offsets is not None:
+                pred_offset = pred_offsets[b]
+                pred_offset[int(ego_id)-1] = torch.zeros((1, self.bev_h, self.bev_w, 2), device=pred_offset.device)
+
             N = xx[0].shape[0]
             t_matrix = pairwise_t_matrix[b][:N, 0, :, :]  # B, agent_index, time_index, 2, 3
           
@@ -311,19 +315,16 @@ class DeforEncoderMultiScale(nn.Module):
                 if self.train_stage == "stage1":
                     # use offset GT
                     # N, H, W, 2 -> N, H*W, 2 -> H*W, N, 2 -> H*W, N, self.feature_level, 2 -> 1, H*W, N, self.feature_level, 2
-                    offset = offset.flatten(start_dim=1, end_dim=2).permute(1, 0, 2).unsqueeze(2).repeat(1, 1, self.feature_level, 1).unsqueeze(0)
-                    ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
-                    ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N, self.feature_level, 1) # 1, H*W, N, self.feature_level, 2
-                    ref_2d_calibrate = ref_2d_calibrate + offset
-                    ref_2d = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, N*self.feature_level, 2 
+                    calibrate_offset = offset.flatten(start_dim=1, end_dim=2).permute(1, 0, 2).unsqueeze(2).repeat(1, 1, self.feature_level, 1).unsqueeze(0)
+                    
                 else:
                     # use pred offset: ego always output 0
-                    offset = pred_offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1)
-                    ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
-                    ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N-1, self.feature_level, 1) # 1, H*W, N-1, self.feature_level, 2
-                    ref_2d_calibrate = ref_2d_calibrate + offset
-                    ref_2d_calibrate = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, (N-1)*self.feature_level, 2 
-                    ref_2d = torch.cat([ref_2d.repeat(1, 1, self.feature_level,1), ref_2d_calibrate], dim=2)
+                    calibrate_offset = pred_offset.flatten(start_dim=1, end_dim=2).permute(1, 0, 2).unsqueeze(2).repeat(1, 1, self.feature_level, 1).unsqueeze(0)
+                
+                ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
+                ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N, self.feature_level, 1) # 1, H*W, N, self.feature_level, 2
+                ref_2d_calibrate = ref_2d_calibrate + calibrate_offset
+                ref_2d = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, N*self.feature_level, 2 
             else:
                 ref_2d = ref_2d.repeat(1, 1, N*self.feature_level, 1)  # #1, H*W+...+H3*W3, N, 2
 

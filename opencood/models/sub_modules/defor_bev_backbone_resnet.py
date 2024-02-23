@@ -123,7 +123,7 @@ class DeforResNetBEVBackbone(nn.Module):
         return pairwise_t_matrix
 
     def get_projected_bev_features(self, data_dict, batch_index, agent_index):
-        # process one batch, with T frames
+        # process one cav_id, with T frames
         spatial_features = data_dict['spatial_features']
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
         H, W = spatial_features.shape[2:]
@@ -133,7 +133,7 @@ class DeforResNetBEVBackbone(nn.Module):
         batch_features_projected =[]
         for level_feature in multi_scale_feature:  # x 是cnn出来的多层feature
             T, _, h, w = level_feature.shape
-            projected_level_feature = warp_affine_simple(level_feature, pairwise_t_matrix[batch_index:batch_index+1, 0, agent_index].repeat(T, 1, 1), (h, w))
+            projected_level_feature = warp_affine_simple(level_feature, pairwise_t_matrix[batch_index, agent_index], (h, w))
             batch_features_projected.append(projected_level_feature)
 
         return batch_features_projected

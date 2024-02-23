@@ -57,19 +57,19 @@ class PointPillarDeformable(nn.Module):
             self.use_seperate_head = False
 
     @torch.no_grad()
-    def get_batch_pillar_features(self, batch_history_lidar, pairwise_t_matrix, agent_index):
-        # batch, T, lidar; process all the batchs within one agent
+    def get_cav_pillar_features(self, cav_history_lidar, pairwise_t_matrix, batch_index):
+        # cav_id, T, lidar; process all the batchs within one cav
         num_levels = self.backbone.num_levels
         multiscale_features = [[] for _ in range(num_levels)]
-        for batch_index, batch_lidars in enumerate(batch_history_lidar):
-            batch_lidars = self.pillar_vfe(batch_lidars)
-            batch_lidars = self.scatter(batch_lidars) # spatial feature: T, C, H, W
-            batch_lidars['pairwise_t_matrix'] = pairwise_t_matrix
+        for cav_id_index, cav_lidars in enumerate(cav_history_lidar):
+            cav_lidars = self.pillar_vfe(cav_lidars)
+            cav_lidars = self.scatter(cav_lidars) # spatial feature: T, C, H, W
+            cav_lidars['pairwise_t_matrix'] = pairwise_t_matrix
             # process all the T frames within one batch
-            T_frame_features = self.backbone.get_projected_bev_features(batch_lidars, batch_index, agent_index)# [ (t, c0, h0, w0), ( t, c1, h1, w1), (t, c2, h2, w2) ]
+            T_frame_features = self.backbone.get_projected_bev_features(cav_lidars, batch_index, cav_id_index) # [ (t, c0, h0, w0), ( t, c1, h1, w1), (t, c2, h2, w2) ]
             for i in range(num_levels):
                 multiscale_features[i].append(T_frame_features[i].unsqueeze(0))
-        multiscale_features = [ torch.cat(x, dim=0) for x in multiscale_features] # [ (b, t, c0, h0, w0), (b, t, c1, h1, w1), (b, t, c2, h2, w2) ]
+        multiscale_features = [ torch.cat(x, dim=0) for x in multiscale_features] # [ (cav, t, c0, h0, w0), (cav, t, c1, h1, w1), (cav, t, c2, h2, w2) ]
         return multiscale_features
 
     def forward(self, data_dict):
@@ -92,21 +92,22 @@ class PointPillarDeformable(nn.Module):
         if self.calibrate:
             assert 'calibrate_data' in data_dict
             # offset_GT [ num_agent*h*w*2, num_agent*h*w*2, ... ] # 不需要改变
+            GT_offset_l = data_dict['calibrate_data']['offset']
             if self.train_stage == 'stage1':
-                batch_dict.update({'offset_GT': data_dict['calibrate_data']['offset'],
+                batch_dict.update({'offset_GT': GT_offset_l,
                                 'pred_offset': None
                                 })
             elif self.train_stage == 'stage2':
                 # data_dict['calibrate_data']['lidar_history']: list [  [cav_id_1, cav_id_2, cav_id_3] , []]
                 # time_delay [ tensor, ...]
-                for batch_cav_history in data_dict['calibrate_data']['lidar_history']:
-                    for cav_id in batch_cav_history:
-                        pass
-                lidar_history_features = self.get_batch_pillar_features(data_dict['calibrate_data']['lidar_history'], pairwise_t_matrix, cav_id)
-                pred_offsets = [pred_offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for pred_offset in predicted_offset_l]
-                pred_offsets = torch.cat(pred_offsets, dim=2)
-                batch_dict.update({'offset_GT': data_dict['calibrate_data']['offset'],
-                                'pred_offset': pred_offsets
+                # 在V2X-sim中， batch -> cav_id -> T
+                predicted_offset_l = []
+                for batch_index, (batch_cav_history, time_delay) in enumerate(zip(data_dict['calibrate_data']['lidar_history'], data_dict['calibrate_data']['time_delay'])):
+                    lidar_history_features = self.get_cav_pillar_features(batch_cav_history, pairwise_t_matrix, batch_index) # [ (cav, t, c0, h0, w0), (cav, t, c1, h1, w1), (cav, t, c2, h2, w2) ]
+                    predicted_offset = self.meta_flow(lidar_history_features, time_delay)
+                    predicted_offset_l.append(predicted_offset)
+                batch_dict.update({'offset_GT': GT_offset_l,
+                                'pred_offset': predicted_offset_l
                                 })
         else:
             batch_dict.update({'offset_GT': None,
@@ -125,7 +126,9 @@ class PointPillarDeformable(nn.Module):
                        'reg_preds': rm}
         
         if self.calibrate and self.train_stage != 'stage1':
-            data_dict['label_dict'].update({'offset': offsets})  # in-place change, save back to label_dict
+            GT_offsets = torch.concat(GT_offset_l, dim=0)
+            pred_offsets = torch.concat(predicted_offset_l, dim=0)
+            data_dict['label_dict'].update({'offset': GT_offsets})  # in-place change, save back to label_dict
             output_dict.update({'pred_offset': pred_offsets})
         
         if self.supervise_single:
