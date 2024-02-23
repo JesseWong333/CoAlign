@@ -116,8 +116,8 @@ class MetaFlow(nn.Module):
         super().__init__()
         self.encoder = CNNBackbone(args['backbone'])
 
-        self.bev_h = 100
-        self.bev_w = 252
+        self.bev_h = args['bev_h']
+        self.bev_w = args['bev_w']
 
         embed_dims = args['embed_dims']
 

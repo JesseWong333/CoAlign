@@ -151,7 +151,7 @@ def main():
             # the model will be evaluation mode during validation
             model.train()
             if hypes['train_stage'] == 'stage2':
-                model.eval()  # we call eval(), just inorder to avoid the norm layer update
+                model.eval()  # we call eval(), just in order to avoid the norm layer update
                 model.meta_flow.train() 
             model.zero_grad()
             optimizer.zero_grad()
