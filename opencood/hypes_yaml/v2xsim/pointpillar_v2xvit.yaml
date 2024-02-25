@@ -1,7 +1,20 @@
 name: v2xsim_point_pillar_lidar_v2xvit_withnoise
-root_dir: "dataset/v2xsim2_info/v2xsim_infos_train.pkl"
-validate_dir: "dataset/v2xsim2_info/v2xsim_infos_val.pkl"
-test_dir: "dataset/v2xsim2_info/v2xsim_infos_test.pkl"
+data_dir: /hd_cache/datasets/V2X-Sim-2.0
+root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
+validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
+test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
+# data_dir: /mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi
+# root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_train.pkl'
+# validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
+# test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
+
+train_stage: &train_stage "stage1"
+time_delay: 0 
+load_history: true
+bev_h: &bev_h 80
+bev_w: &bev_w 80
+history_frame: &history_frame 5  # we still load the history
+ego_first: true
 
 noise_setting:
   add_noise: False
@@ -13,7 +26,7 @@ noise_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 4
   epoches: 60
   eval_freq: 4
   save_freq: 4
@@ -93,6 +106,7 @@ model:
       num_features: 64
 
     base_bev_backbone: # backbone will downsample 2x
+      resnet: True
       layer_nums: [3, 5, 8]
       layer_strides: [2, 2, 2]
       num_filters: [64, 128, 256]
@@ -160,10 +174,10 @@ loss:
       sigma: 3.0
       codewise: true
       weight: 2.0
-    dir:
-      type: 'WeightedSoftmaxClassificationLoss'
-      weight: 0.2
-      args: *dir_args
+    # dir:
+    #   type: 'WeightedSoftmaxClassificationLoss'
+    #   weight: 0.2
+    #   args: *dir_args
 
 optimizer:
   core_method: Adam
