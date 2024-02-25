@@ -1,25 +1,34 @@
-name: v2xsim_point_pillar_lidar_late_fusion
+name: v2xsim_point_pillar_lidar_v2xvit_withnoise
 root_dir: "dataset/v2xsim2_info/v2xsim_infos_train.pkl"
 validate_dir: "dataset/v2xsim2_info/v2xsim_infos_val.pkl"
 test_dir: "dataset/v2xsim2_info/v2xsim_infos_test.pkl"
 
+noise_setting:
+  add_noise: False
+  args: 
+    pos_std: 0.2
+    rot_std: 0.2
+    pos_mean: 0
+    rot_mean: 0
+
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 8
-  epoches: 50
-  eval_freq: 2
-  save_freq: 2
+  batch_size: &batch_size 2
+  epoches: 60
+  eval_freq: 4
+  save_freq: 4
+  max_cav: &max_cav 5
 
 input_source: ['lidar']
 label_type: 'lidar'
 
 comm_range: 50
-only_vis_ego: true
 
 fusion:
-  core_method: 'late'
+  core_method: 'intermediate'
   dataset: 'v2xsim'
-  args: []
+  args: 
+    proj_first: false
 
 # preprocess-related
 preprocess:
@@ -69,12 +78,12 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_uncertainty
+  core_method: point_pillar_baseline
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
-    dir_args: *dir_args
+
     pillar_vfe:
       use_norm: true
       with_distance: false
@@ -83,19 +92,64 @@ model:
     point_pillar_scatter:
       num_features: 64
 
-    base_bev_backbone:
+    base_bev_backbone: # backbone will downsample 2x
       layer_nums: [3, 5, 8]
       layer_strides: [2, 2, 2]
       num_filters: [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
 
-    uncertainty_dim: &uncertainty_dim 3
+    shrink_header:
+      kernal_size: [ 3 ]
+      stride: [ 1 ]
+      padding: [ 1 ]
+      dim: [ 256 ]
+      input_dim: 384 # 128 * 3
+
+    dir_args: *dir_args
+
+    fusion_method: v2xvit
+
+    v2xvit:
+      transformer:
+        encoder: &encoder
+          # number of fusion blocks per encoder layer
+          num_blocks: 1
+          # number of encoder layers
+          depth: 3
+          use_roi_mask: true
+          use_RTE: &use_RTE false
+          RTE_ratio: &RTE_ratio 0 # 2 means the dt has 100ms interval while 1 means 50 ms interval
+          # agent-wise attention
+          cav_att_config: &cav_att_config
+            dim: 256
+            use_hetero: true
+            use_RTE: *use_RTE
+            RTE_ratio: *RTE_ratio
+            heads: 8
+            dim_head: 32
+            dropout: 0.3
+          # spatial-wise attention
+          pwindow_att_config: &pwindow_att_config
+            dim: 256
+            heads: [16, 8, 4]
+            dim_head: [16, 32, 64]
+            dropout: 0.3
+            window_size: [4, 8, 16]
+            relative_pos_embedding: true
+            fusion_method: 'split_attn'
+          # feedforward condition
+          feed_forward: &feed_forward
+            mlp_dim: 256
+            dropout: 0.3
+          sttf: &sttf
+            voxel_size: *voxel_size
+            downsample_rate: 2
 
 loss:
-  core_method: point_pillar_uncertainty_loss
+  core_method: point_pillar_loss
   args:
-    pos_cls_weight: 1.0
+    pos_cls_weight: 2.0
     cls:
       type: 'SigmoidFocalLoss'
       alpha: 0.25
@@ -111,16 +165,6 @@ loss:
       weight: 0.2
       args: *dir_args
 
-    uncertainty:    
-      weight: 0.25
-      angle_weight: 0.5
-      dim: *uncertainty_dim
-      xy_loss_type: l2
-      angle_loss_type: von-mise
-      lambda_V: 0.001
-      s0: 1
-      limit_period: True
-
 optimizer:
   core_method: Adam
   lr: 0.001
@@ -131,5 +175,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10, 10]
+  step_size: [15, 50]
 

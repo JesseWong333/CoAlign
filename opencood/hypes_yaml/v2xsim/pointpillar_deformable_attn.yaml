@@ -8,14 +8,14 @@ root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_t
 validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
 test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
 
-
-train_stage: &train_stage "stage2" 
-stage1_model: ./opencood/logs/v2xsim_point_pillar_lidar_deformable_attn_2024_02_24_21_03_17/net_epoch_bestval_at13.pth
-time_delay: 3  # max time delay
+# 这个使用主要查看数量减少一点，是否有影响
+train_stage: &train_stage "stage1" 
+# stage1_model: ./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withoutnoise_2024_02_03_17_27_28/net_epoch_bestval_at13.pth
+time_delay: 0 
 load_history: true
 bev_h: &bev_h 80
 bev_w: &bev_w 80
-history_frame: &history_frame 5
+history_frame: &history_frame 5  
 
 noise_setting:
   add_noise: False
@@ -36,7 +36,7 @@ train_params:
 input_source: ['lidar']
 label_type: 'lidar'
 
-comm_range: 500 # 模型中再处理
+comm_range: 500
 
 fusion:
   core_method: 'intermediateLatency'
@@ -94,11 +94,9 @@ postprocess:
 model:
   core_method: point_pillar_deformable
   args:
-    calibrate: &calibrate true
+    calibrate: &calibrate False
     train_stage: *train_stage
     meta_flow:
-      bev_h: *bev_h
-      bev_w: *bev_w
       embed_dims: 128
       n_frame: *history_frame
       block_cfgs:
@@ -190,27 +188,26 @@ loss:
       sigma: 3.0
       codewise: true
       weight: 2.0
-    train_stage: *train_stage
     # dir:
     #   type: 'WeightedSoftmaxClassificationLoss'
     #   weight: 0.2
     #   args: *dir_args
 
 # stage 1
-# optimizer:
-#   core_method: Adam
-#   lr: 0.002
-#   args:
-#     eps: 1e-10
-#     weight_decay: 1e-4
-
-# for stage2
 optimizer:
   core_method: Adam
-  lr: 0.0002 # for stage2; stage1 0.002
+  lr: 0.002
   args:
     eps: 1e-10
-    # weight_decay: 1e-4
+    weight_decay: 1e-4
+
+# for stage2
+# optimizer:
+#   core_method: Adam
+#   lr: 0.0001 # for stage2; stage1 0.002
+#   args:
+#     eps: 1e-10
+#     # weight_decay: 1e-4
 
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support

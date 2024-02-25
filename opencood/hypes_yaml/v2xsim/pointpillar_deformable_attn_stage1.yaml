@@ -11,7 +11,7 @@ test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_t
 
 train_stage: &train_stage "stage1" 
 # stage1_model: ./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withoutnoise_2024_02_03_17_27_28/net_epoch_bestval_at13.pth
-time_delay: 5  # max time delay
+time_delay: 3  # max time delay
 load_history: true
 bev_h: &bev_h 80
 bev_w: &bev_w 80

@@ -19,7 +19,6 @@ import random
 class V2XSIMBaseDataset(Dataset):
     """
         First version.
-        Load V2X-sim 2.0 using yifan lu's pickle file. 
         Only support LiDAR data.
     """
 
@@ -82,6 +81,9 @@ class V2XSIMBaseDataset(Dataset):
             self.load_history = True
         else:
             self.load_history = False
+
+        if "train_stage" in self.params:
+            self.train_stage = self.params["train_stage"]
         
         if "history_frame" in self.params:
             self.history_frame = self.params["history_frame"] 
@@ -285,7 +287,12 @@ class V2XSIMBaseDataset(Dataset):
             # 训练时随机选择
             max_trial = 5
             for _ in range(max_trial):
-                time_index = random.randint(0, self.max_time_delay)
+                if self.train_stage == "stage1":
+                    time_index = np.floor(np.random.exponential(scale=0.5)).astype(np.int32) # 均值为100ms
+                    if time_index > self.max_time_delay:
+                        time_index = self.max_time_delay
+                else:
+                    time_index = random.randint(0, self.max_time_delay)
                 history_index_list = [index for index in range(time_index, time_index + self.history_frame)]
                 if self.is_track_frame_exits(frame_info, time_index + self.history_frame): # 要求每一帧都在，不能缺帧
                     return history_index_list, time_index
@@ -357,3 +364,4 @@ class V2XSIMBaseDataset(Dataset):
         object_bbx_mask = tmp_dict['object_bbx_mask']
 
         return lidar_np, object_bbx_center, object_bbx_mask
+    

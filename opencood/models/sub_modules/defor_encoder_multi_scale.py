@@ -286,7 +286,8 @@ class DeforEncoderMultiScale(nn.Module):
         for b, xx in enumerate(split_x):  
             # input: xx: [ (N, C_0, H_0, W_0), (N, C_1, H_1, W_1), (N, C_2, H_2, W_2) ]
             ego_id = ego_ids[b]
-            offset = offsets[b]
+            if offsets is not None:
+                offset = offsets[b]
             if pred_offsets is not None:
                 pred_offset = pred_offsets[b]
                 pred_offset[int(ego_id)-1] = torch.zeros((1, self.bev_h, self.bev_w, 2), device=pred_offset.device)

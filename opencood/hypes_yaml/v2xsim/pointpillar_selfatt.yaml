@@ -1,24 +1,32 @@
-name: v2xsim_point_pillar_lidar_v2vnet_robust_withnoise
-root_dir: "dataset/v2xsim2_info/v2xsim_infos_train.pkl"
-validate_dir: "dataset/v2xsim2_info/v2xsim_infos_val.pkl"
-test_dir: "dataset/v2xsim2_info/v2xsim_infos_test.pkl"
+name: v2xsim_point_pillar_lidar_selfatt_withnoise
+# data_dir: /data/datasets/V2X-smi/V2X-Sim-2.0
+# root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
+# validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
+# test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
+data_dir: /mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi
+root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_train.pkl'
+validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
+test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
+
+train_stage: &train_stage "stage1"
+time_delay: 0 
+load_history: true
+bev_h: &bev_h 80
+bev_w: &bev_w 80
+history_frame: &history_frame 5  # we still load the history
 
 noise_setting:
-  add_noise: True
+  add_noise: False
   args: 
     pos_std: 0.2
     rot_std: 0.2
     pos_mean: 0
     rot_mean: 0
 
-stage: &stage 0
-
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 16
-  epoches: 15 # stage 0
-  # epoches: 20 # stage 1 
-  # epoches: 30 # stage 2
+  epoches: 20
   eval_freq: 2
   save_freq: 2
   max_cav: &max_cav 5
@@ -26,7 +34,7 @@ train_params:
 input_source: ['lidar']
 label_type: 'lidar'
 
-comm_range: 50
+comm_range: 500
 
 fusion:
   core_method: 'intermediate'
@@ -65,9 +73,9 @@ postprocess:
     l: 3.9
     w: 1.6
     h: 1.56
-    r: [0, 90]
-    feature_stride: 4
-    num: &achor_num 2
+    r: &anchor_yaw [0, 90]
+    feature_stride: 2
+    num: &anchor_num 2
   target_args:
     pos_threshold: 0.6
     neg_threshold: 0.45
@@ -75,17 +83,18 @@ postprocess:
   order: 'hwl' # hwl or lwh
   max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
   nms_thresh: 0.15
+  dir_args: &dir_args
+    dir_offset: 0.7853
+    num_bins: 2
+    anchor_yaw: *anchor_yaw
 
 # model related
 model:
-  core_method: point_pillar_v2vnet_robust
+  core_method: point_pillar_intermediate
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
-    anchor_number: *achor_num
-    max_cav: *max_cav
-    compression: 0 # compression rate
-    backbone_fix: false
+    anchor_number: *anchor_num
 
     pillar_vfe:
       use_norm: true
@@ -95,57 +104,40 @@ model:
     point_pillar_scatter:
       num_features: 64
 
-    base_bev_backbone:
+    base_bev_backbone: # backbone will downsample 2x
+      voxel_size: *voxel_size
       layer_nums: [3, 5, 8]
       layer_strides: [2, 2, 2]
       num_filters: [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
-    shrink_header:
-      kernal_size: [ 3 ]
-      stride: [ 2 ]
-      padding: [ 1 ]
-      dim: [ 256 ]
-      input_dim: 384 # 128 * 3
 
-    v2vfusion:
-      voxel_size: *voxel_size
-      downsample_rate: &downsample_rate 4
-      num_iteration: 2
-      in_channels: 256
-      gru_flag: true
-      agg_operator: "weight" # max or avg
-      conv_gru:
-        H: &H 40
-        W: &W 40
-        num_layers: 1
-        kernel_size: [[3,3]]
 
-    robust:
-      H: *H
-      W: *W
-      feature_dim: 256
-      hidden_dim: 256
-      downsample_rate: *downsample_rate
-      discrete_ratio: 0.4
+    dir_args: *dir_args
 
-    stage: *stage
-
-      # add decoder later
 
 loss:
-  core_method: point_pillar_v2v_robust_loss
+  core_method: point_pillar_loss
   args:
-    cls_weight: 1.0
-    reg: 2.0
-    score_weight: 0.1
-    pose_weight: 0.8
+    pos_cls_weight: 2.0
+    cls:
+      type: 'SigmoidFocalLoss'
+      alpha: 0.25
+      gamma: 2.0
+      weight: 1.0
+    reg:
+      type: 'WeightedSmoothL1Loss'
+      sigma: 3.0
+      codewise: true
+      weight: 2.0
+    # dir:
+    #   type: 'WeightedSoftmaxClassificationLoss'
+    #   weight: 0.2
+    #   args: *dir_args
 
 optimizer:
   core_method: Adam
-  lr: 0.001 # stage 0
-  # lr: 0.002 # stage 1
-  # lr: 0.0002 # stage 2
+  lr: 0.002
   args:
     eps: 1e-10
     weight_decay: 1e-4
@@ -153,7 +145,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10] # stage 0
-  # step_size: [10, 20] # stage 1
-  # step_size: [10, 20] # stage 2
+  step_size: [10, 15]
 
