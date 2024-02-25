@@ -1,12 +1,12 @@
 name: v2xsim_point_pillar_lidar_selfatt_withnoise
-# data_dir: /data/datasets/V2X-smi/V2X-Sim-2.0
-# root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
-# validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
-# test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
-data_dir: /mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi
-root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_train.pkl'
-validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
-test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
+data_dir: /hd_cache/datasets/V2X-Sim-2.0
+root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
+validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
+test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
+# data_dir: /mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi
+# root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_train.pkl'
+# validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
+# test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
 
 train_stage: &train_stage "stage1"
 time_delay: 0 
@@ -15,6 +15,7 @@ bev_h: &bev_h 80
 bev_w: &bev_w 80
 history_frame: &history_frame 5  # we still load the history
 
+ego_first: true
 noise_setting:
   add_noise: False
   args: 
@@ -105,6 +106,7 @@ model:
       num_features: 64
 
     base_bev_backbone: # backbone will downsample 2x
+      resnet: True
       voxel_size: *voxel_size
       layer_nums: [3, 5, 8]
       layer_strides: [2, 2, 2]

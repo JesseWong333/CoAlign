@@ -95,7 +95,7 @@ class V2XSIMBaseDataset(Dataset):
 
         if "bev_w" in self.params:
             self.bev_w = self.params["bev_w"]
-
+        
         # TODO param: one as ego or all as ego?
         self.ego_mode = 'one'  # "all"
 
@@ -105,6 +105,10 @@ class V2XSIMBaseDataset(Dataset):
         else:
             raise NotImplementedError(self.ego_mode)
         
+        if "ego_first" in self.params:
+            self.ego_first = self.params["ego_first"]
+        else:
+            self.ego_first = False
         # {token: id} look up dict
         self.token_id_dict = {}
         for i, scene_info in enumerate(dataset_info_pkl):
@@ -245,7 +249,8 @@ class V2XSIMBaseDataset(Dataset):
                     data[f'{cav_id}']['params']['offset'] = torch.zeros((1, self.bev_h, self.bev_w, 2))
                 else:
                     data[f'{cav_id}']['params']['offset'] = offset_map[ego_id-1, cav_id-1, time_index-1, :, :, :].unsqueeze(0)
-        data = OrderedDict(sorted(data.items(), key=lambda x: x[0]))
+        if not self.ego_first:
+            data = OrderedDict(sorted(data.items(), key=lambda x: x[0]))
         return data
     
     @staticmethod

@@ -9,7 +9,7 @@ import torch.nn as nn
 
 from opencood.models.sub_modules.pillar_vfe import PillarVFE
 from opencood.models.sub_modules.point_pillar_scatter import PointPillarScatter
-from opencood.models.sub_modules.att_bev_backbone import AttBEVBackbone
+from opencood.models.sub_modules.att_bev_backbone import AttBEVBackbone, AttResBEVBackbone
 
 
 class PointPillarIntermediate(nn.Module):
@@ -22,8 +22,11 @@ class PointPillarIntermediate(nn.Module):
                                     voxel_size=args['voxel_size'],
                                     point_cloud_range=args['lidar_range'])
         self.scatter = PointPillarScatter(args['point_pillar_scatter'])
-        self.backbone = AttBEVBackbone(args['base_bev_backbone'], 64)
 
+        if 'resnet' in args['base_bev_backbone']:
+            self.backbone = AttResBEVBackbone(args['base_bev_backbone'], 64)
+        else:
+            self.backbone = AttBEVBackbone(args['base_bev_backbone'], 64)
         self.cls_head = nn.Conv2d(128 * 3, args['anchor_number'],
                                   kernel_size=1)
         self.reg_head = nn.Conv2d(128 * 3, 7 * args['anchor_number'],
@@ -50,7 +53,6 @@ class PointPillarIntermediate(nn.Module):
                       'pairwise_t_matrix': pairwise_t_matrix}
             
 
-
         batch_dict = self.pillar_vfe(batch_dict)
         batch_dict = self.scatter(batch_dict)
 
@@ -67,3 +69,4 @@ class PointPillarIntermediate(nn.Module):
             output_dict.update({'dir_preds': self.dir_head(spatial_features_2d)})
             
         return output_dict
+    
