@@ -42,6 +42,8 @@ def getLateFusionDataset(cls):
 
         def __getitem__(self, idx):
             base_data_dict = self.retrieve_base_data(idx)
+            if base_data_dict is None:
+                return None
             if self.train:
                 reformat_data_dict = self.get_item_train(base_data_dict)
             else:
@@ -290,6 +292,9 @@ def getLateFusionDataset(cls):
             batch : dict
                 Reformatted batch.
             """
+            batch = [data_dict for data_dict in batch if data_dict is not None]
+            if len(batch) == 0:
+                return None  
             # during training, we only care about ego.
             output_dict = {'ego': {}}
 
