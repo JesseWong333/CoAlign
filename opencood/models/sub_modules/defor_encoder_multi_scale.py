@@ -285,7 +285,8 @@ class DeforEncoderMultiScale(nn.Module):
         out = []
         for b, xx in enumerate(split_x):  
             # input: xx: [ (N, C_0, H_0, W_0), (N, C_1, H_1, W_1), (N, C_2, H_2, W_2) ]
-            ego_id = ego_ids[b]
+            if ego_ids is not None:
+                ego_id = ego_ids[b]
             if offsets is not None:
                 offset = offsets[b]
             if pred_offsets is not None:

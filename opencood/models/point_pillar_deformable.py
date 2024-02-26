@@ -86,7 +86,7 @@ class PointPillarDeformable(nn.Module):
                       'voxel_num_points': voxel_num_points,
                       'record_len': record_len,
                       'pairwise_t_matrix': pairwise_t_matrix,
-                      'ego_ids': data_dict['ego_ids']}
+                      'ego_ids': data_dict['ego_ids'] if 'ego_ids' in data_dict else None}
         # Dair-v2x: 一个batch中，所有的inf折叠
         # V2X-sim: 一个batch中，一个协同场景的其他CAV_ID折叠， batch层面分开做
         if self.calibrate:

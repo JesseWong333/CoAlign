@@ -389,6 +389,9 @@ def getLateFusionDataset(cls):
             batch : dict
                 Reformatted batch.
             """
+            batch = [data_dict for data_dict in batch if data_dict is not None]
+            if len(batch) == 0:
+                return None  
             # currently, we only support batch size of 1 during testing
             assert len(batch) <= 1, "Batch size 1 is required during testing!"
             batch = batch[0]
