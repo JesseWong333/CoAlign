@@ -31,7 +31,7 @@ label_type: 'lidar'
 comm_range: 100000
 
 fusion:
-  core_method: 'intermediate'  # 这个不一样，决定什么？
+  core_method: 'intermediate'
   dataset: 'dairv2x'
   args: 
     proj_first: false
@@ -101,7 +101,7 @@ model:
     base_bev_backbone: # backbone will downsample 2x
       resnet: true
       voxel_size: *voxel_size
-      layer_nums: &layer_nums [3, 4, 5]  # where2comm restnet改为345了， 原358
+      layer_nums: &layer_nums [3, 5, 8]  # where2comm restnet改为345了， 原358
       layer_strides: [2, 2, 2]
       num_filters: &num_filters [64, 128, 256]
       upsample_strides: [1, 2, 4]

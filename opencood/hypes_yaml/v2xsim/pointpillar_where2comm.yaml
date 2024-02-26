@@ -1,7 +1,20 @@
-name: v2xsim_point_pillar_lidar_v2xvit_withnoise
-root_dir: "dataset/v2xsim2_info/v2xsim_infos_train.pkl"
-validate_dir: "dataset/v2xsim2_info/v2xsim_infos_val.pkl"
-test_dir: "dataset/v2xsim2_info/v2xsim_infos_test.pkl"
+name: v2xsim_point_pillar_lidar_selfatt_withnoise
+data_dir: /hd_cache/datasets/V2X-Sim-2.0
+root_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_train.pkl'
+validate_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_val.pkl'
+test_dir: '/hd_cache/users/junjie/projects/coperception/v2xsim2_info_generated/v2xsim_infos_test.pkl'
+# data_dir: /mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi
+# root_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_train.pkl'
+# validate_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_val.pkl'
+# test_dir: '/mimer/NOBACKUP/groups/junjie_storage/datasets/v2x-smi/v2xsim_infos_test.pkl'
+
+train_stage: &train_stage "stage1"
+time_delay: 0 
+load_history: true
+bev_h: &bev_h 80
+bev_w: &bev_w 80
+history_frame: &history_frame 5  # we still load the history
+ego_first: true
 
 noise_setting:
   add_noise: False
@@ -13,16 +26,16 @@ noise_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
-  epoches: 60
-  eval_freq: 4
-  save_freq: 4
+  batch_size: &batch_size 8
+  epoches: 20
+  eval_freq: 2
+  save_freq: 2
   max_cav: &max_cav 5
 
 input_source: ['lidar']
 label_type: 'lidar'
 
-comm_range: 50
+comm_range: 500
 
 fusion:
   core_method: 'intermediate'
@@ -78,8 +91,9 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_baseline
+  core_method: point_pillar_where2comm
   args:
+    supervise_single: true
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
     anchor_number: *anchor_num
@@ -93,9 +107,11 @@ model:
       num_features: 64
 
     base_bev_backbone: # backbone will downsample 2x
-      layer_nums: [3, 5, 8]
+      resnet: True
+      voxel_size: *voxel_size
+      layer_nums: &layer_nums [3, 5, 8]
       layer_strides: [2, 2, 2]
-      num_filters: [64, 128, 256]
+      num_filters: &num_filters [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
 
@@ -104,47 +120,29 @@ model:
       stride: [ 1 ]
       padding: [ 1 ]
       dim: [ 256 ]
-      input_dim: 384 # 128 * 3
+      input_dim: 384 # 128 * 3  
+
+    fusion_args:
+      voxel_size: *voxel_size
+      downsample_rate: 1
+      in_channels: 256
+      n_head: 8
+      dropout_rate: 0
+      only_attention: true
+      # communication:
+      #   thre: 0.01
+      #   gaussian_smooth:
+      #     k_size: 5
+      #     c_sigma: 1.0
+      agg_operator:
+        mode: 'MAX'
+        feature_dim: 256
+      multi_scale: true
+      layer_nums: *layer_nums
+      num_filters: *num_filters
 
     dir_args: *dir_args
 
-    fusion_method: v2xvit
-
-    v2xvit:
-      transformer:
-        encoder: &encoder
-          # number of fusion blocks per encoder layer
-          num_blocks: 1
-          # number of encoder layers
-          depth: 3
-          use_roi_mask: true
-          use_RTE: &use_RTE false
-          RTE_ratio: &RTE_ratio 0 # 2 means the dt has 100ms interval while 1 means 50 ms interval
-          # agent-wise attention
-          cav_att_config: &cav_att_config
-            dim: 256
-            use_hetero: true
-            use_RTE: *use_RTE
-            RTE_ratio: *RTE_ratio
-            heads: 8
-            dim_head: 32
-            dropout: 0.3
-          # spatial-wise attention
-          pwindow_att_config: &pwindow_att_config
-            dim: 256
-            heads: [16, 8, 4]
-            dim_head: [16, 32, 64]
-            dropout: 0.3
-            window_size: [4, 8, 16]
-            relative_pos_embedding: true
-            fusion_method: 'split_attn'
-          # feedforward condition
-          feed_forward: &feed_forward
-            mlp_dim: 256
-            dropout: 0.3
-          sttf: &sttf
-            voxel_size: *voxel_size
-            downsample_rate: 2
 
 loss:
   core_method: point_pillar_loss
@@ -160,14 +158,14 @@ loss:
       sigma: 3.0
       codewise: true
       weight: 2.0
-    dir:
-      type: 'WeightedSoftmaxClassificationLoss'
-      weight: 0.2
-      args: *dir_args
+    # dir:
+    #   type: 'WeightedSoftmaxClassificationLoss'
+    #   weight: 0.2
+    #   args: *dir_args
 
 optimizer:
   core_method: Adam
-  lr: 0.001
+  lr: 0.002
   args:
     eps: 1e-10
     weight_decay: 1e-4
@@ -175,5 +173,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [15, 50]
+  step_size: [10, 15]
 
