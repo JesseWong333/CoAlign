@@ -7,10 +7,11 @@ import torch.nn as nn
 import math
 from opencood.utils.mmcv_utils import constant_init, xavier_init
 from opencood.models.sub_modules.torch_transformation_utils import warp_affine_simple
-# from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch # use the pytorch version;
+# \\from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch # use the pytorch version;
 from opencood.utils.ms_deform_attn_ops.functions import MSDeformAttnFunction
 from mmdet.models.utils import LearnedPositionalEncoding
 from opencood.models.sub_modules.optical_flow import FlowPred
+import torch.nn.functional as F
 from torch.nn.init import normal_
 
 # SelfAttn 和 CrossAttn 可以通用
@@ -256,6 +257,13 @@ class DeforEncoderMultiScale(nn.Module):
         split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
         return split_x
     
+    @staticmethod
+    def resize_flow(flow, h, w):
+        # (b, h, w, c)
+        flow = flow.permute(0, 3, 1, 2)
+        flow = F.interpolate(flow, (h, w), mode='bilinear')
+        return flow.permute(0, 2, 3, 1)
+
     def forward(self, mlvl_feats, record_len, pairwise_t_matrix, offsets, pred_offsets):
         """ multi-scale deformable attention
             mlvl_feats: [(Bs, C, h, w)] a list of multi-scale features
@@ -288,10 +296,22 @@ class DeforEncoderMultiScale(nn.Module):
           
             feat_flatten = []
             spatial_shapes = []
+
+            if self.train_stage == "stage1":
+                offset = offsets[b:b+1, :, :, :].view(1, self.bev_h, self.bev_w, 2) # 直接插值
+            elif self.train_stage == "stage2":
+                offset = pred_offsets[b:b+1, :, :, :].view(1, self.bev_h, self.bev_w, 2)
             # treat both the num of agent and feature level as feature level; intotal 6 feature levels
             for lvl, feat in enumerate(xx):
                 _, c, h, w = feat.shape
                 feat = warp_affine_simple(feat, t_matrix[0, :, :, :], (h, w))  # 0 is ego
+                if self.calibrate and N > 1:
+                    ref_2d = self.get_reference_points(
+                        h, w, device=xx[0].device, dtype=xx[0].dtype).view(1, h, w, 2) # 1, H*W, 1, 2
+                    resized_flow = self.resize_flow(offset, h, w)
+                    sampling_grids = 2 * (ref_2d + resized_flow) - 1
+                    feat_calibrate = F.grid_sample(feat[1:2], sampling_grids, mode='bilinear', padding_mode='zeros', align_corners=False)
+                    feat = torch.cat([feat[0:1], feat_calibrate], dim=0)
                 spatial_shape = (h, w)
                 feat = feat.flatten(2).transpose(1, 2) # N, h*w, C
                 feat = feat + self.level_embeds[None, lvl:lvl + 1, :].to(feat.dtype)
@@ -303,20 +323,20 @@ class DeforEncoderMultiScale(nn.Module):
             ref_2d = self.get_reference_points(
                self.bev_h, self.bev_w, device=feat.device, dtype=feat.dtype) # 1, H*W, 1, 2
             # calibrate ref_2d
-            if self.calibrate and N > 1: 
-                if self.train_stage == "stage1":
-                    # use offset GT
-                    offset = offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1) # 1, H*W, N-1, 2 -> 1, H*W, N-1, self.feature_level, 2 
-                else:
-                    # use pred offset
-                    offset = pred_offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1)
-                ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
-                ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N-1, self.feature_level, 1) # 1, H*W, N-1, self.feature_level, 2
-                ref_2d_calibrate = ref_2d_calibrate + offset
-                ref_2d_calibrate = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, (N-1)*self.feature_level, 2 
-                ref_2d = torch.cat([ref_2d.repeat(1, 1, self.feature_level,1), ref_2d_calibrate], dim=2)
-            else:
-                ref_2d = ref_2d.repeat(1, 1, N*self.feature_level, 1)  # #1, H*W+...+H3*W3, N, 2
+            # if self.calibrate and N > 1: 
+            #     if self.train_stage == "stage1":
+            #         # use offset GT
+            #         offset = offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1) # 1, H*W, N-1, 2 -> 1, H*W, N-1, self.feature_level, 2 
+            #     else:
+            #         # use pred offset
+            #         offset = pred_offsets[b:b+1, :, :, :].unsqueeze(3).repeat(1, 1, 1, self.feature_level, 1)
+            #     ref_2d_calibrate = ref_2d.unsqueeze(2) # 1, H*W, 1, 1, 2 
+            #     ref_2d_calibrate = ref_2d_calibrate.repeat(1, 1, N-1, self.feature_level, 1) # 1, H*W, N-1, self.feature_level, 2
+            #     ref_2d_calibrate = ref_2d_calibrate + offset
+            #     ref_2d_calibrate = ref_2d_calibrate.flatten(start_dim=2, end_dim=3) # 1, H*W, (N-1)*self.feature_level, 2 
+            #     ref_2d = torch.cat([ref_2d.repeat(1, 1, self.feature_level,1), ref_2d_calibrate], dim=2)
+            # else:
+            #     ref_2d = ref_2d.repeat(1, 1, N*self.feature_level, 1)  # #1, H*W+...+H3*W3, N, 2
 
             # spatial shapes [(h0,w0), (h1,w1), (h2,w2), (h0,w0), (h1,w1), (h2,w2)]
             spatial_shapes = spatial_shapes * N
