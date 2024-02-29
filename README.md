@@ -6,6 +6,13 @@ Robust Collaborative 3D Object Detection in Presence of Pose Errors
 
 ![Original1](images/coalign.jpg)
 
+### Compiling CUDA operators
+```bash
+cd ./models/ops
+sh ./make.sh
+# unit test (should see all checking is True)
+python test.py
+```
 
 ## Update🌟 2023.7.11
 

@@ -1,16 +1,16 @@
 name: dairv2x_point_pillar_lidar_deformable_attn_withoutnoise
-data_dir: "/hd_cache/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
-root_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-validate_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# data_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
-# root_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
-# validate_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
-# test_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+# data_dir: "/hd_cache/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
+# root_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+# validate_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+# test_dir: "/data/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+data_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure"
+root_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/train.json"
+validate_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
+test_dir: "/mimer/NOBACKUP/groups/junjie_storage/datasets/DAIR-V2X/cooperative-vehicle-infrastructure/val.json"
 
 # 或许直接训练所有的也可
 train_stage: &train_stage "stage2" 
-stage1_model: ./opencood/logs/dairv2x_point_pillar_lidar_deformable_attn_withoutnoise_2024_02_04_17_36_48/net_epoch_bestval_at13.pth
+stage1_model: ./opencood/logs/dair_v2x_stage1_report/net_epoch_bestval_at13.pth
 time_delay: 5  # max time delay
 load_history: true
 bev_h: &bev_h 100
@@ -100,11 +100,9 @@ model:
       embed_dims: 128
       n_frame: *history_frame
       block_cfgs:
-        [[128, 8, 8, 8, 8, 0.1, 1, 5, ["cross_attn", "norm", "ffn", "norm", 
-                                        "cross_attn", "norm", "ffn", "norm",
+        [[128, 8, 8, 8, 8, 0.1, 1, *history_frame, ["cross_attn", "norm", "ffn", "norm", 
                                         "cross_attn", "norm", "ffn", "norm"]],
-          [128, 8, 8, 8, 8, 0.1, 1, 5, ["self_attn", "norm", "ffn", "norm", 
-                                        "self_attn", "norm", "ffn", "norm"] ]
+          [128, 8, 8, 8, 8, 0.1, 1, *history_frame, ["self_attn", "norm", "ffn", "norm"] ]
         ]
       backbone: 
         upsample_strides: [1, 2, 4]
