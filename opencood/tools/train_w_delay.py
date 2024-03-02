@@ -97,7 +97,7 @@ def main():
         model.load_state_dict(main_model_dict, strict=False) # missing meta_flow model; 
         # train the flow model with a trained detection model
         for name, value in model.named_parameters():
-            if name.startswith('meta_flow'):
+            if name.startswith('syncnet'):
                 value.requires_grad = True # Note, the BN of is still updating
             else:
                 value.requires_grad = False
@@ -152,7 +152,7 @@ def main():
             model.train()
             if hypes['train_stage'] == 'stage2':
                 model.eval()  # we call eval(), just inorder to avoid the norm layer update
-                model.meta_flow.train() 
+                model.syncnet.train() 
             model.zero_grad()
             optimizer.zero_grad()
             batch_data = train_utils.to_device(batch_data, device)

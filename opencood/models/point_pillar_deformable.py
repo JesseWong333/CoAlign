@@ -9,6 +9,7 @@ from opencood.models.sub_modules.point_pillar_scatter import PointPillarScatter
 from opencood.models.sub_modules.defor_att_bev_backbone import DeforBEVBackbone
 from opencood.models.sub_modules.defor_bev_backbone_resnet import DeforResNetBEVBackbone
 from opencood.models.meta_flow import MetaFlow
+from opencood.models.sub_modules.SyncLSTM import SyncLSTM
 
 class PointPillarDeformable(nn.Module):
     def __init__(self, args):
@@ -40,7 +41,8 @@ class PointPillarDeformable(nn.Module):
             self.calibrate = True
             # create calibrate model
             if self.train_stage == 'stage2':
-                self.meta_flow = MetaFlow(args['meta_flow'])
+                # self.meta_flow = MetaFlow(args['meta_flow'])
+                self.syncnet = SyncLSTM(channel_size = 64, spatial_size = (200, 504), k = 3, TM_Flag = False, compressed_size = 64)
         else:
             self.calibrate = False
 
@@ -59,18 +61,12 @@ class PointPillarDeformable(nn.Module):
     @torch.no_grad()
     def get_batch_pillar_features(self, batch_history_lidar, pairwise_t_matrix, agent_index):
         # batch, T, lidar; process all the batchs within one agent
-        num_levels = self.backbone.num_levels
-        multiscale_features = [[] for _ in range(num_levels)]
+        features_l = []
         for batch_index, batch_lidars in enumerate(batch_history_lidar):
             batch_lidars = self.pillar_vfe(batch_lidars)
             batch_lidars = self.scatter(batch_lidars) # spatial feature: T, C, H, W
-            batch_lidars['pairwise_t_matrix'] = pairwise_t_matrix
-            # process all the T frames within one batch
-            T_frame_features = self.backbone.get_projected_bev_features(batch_lidars, batch_index, agent_index)# [ (t, c0, h0, w0), ( t, c1, h1, w1), (t, c2, h2, w2) ]
-            for i in range(num_levels):
-                multiscale_features[i].append(T_frame_features[i].unsqueeze(0))
-        multiscale_features = [ torch.cat(x, dim=0) for x in multiscale_features] # [ (b, t, c0, h0, w0), (b, t, c1, h1, w1), (b, t, c2, h2, w2) ]
-        return multiscale_features
+            features_l.append(batch_lidars['spatial_features'].unsqueeze(0))
+        return torch.cat(features_l, dim=0)
 
     def forward(self, data_dict):
 
@@ -97,26 +93,22 @@ class PointPillarDeformable(nn.Module):
                 offset_GT_l.append(offset_GT)
                 time_delay = data_dict['calibrate_data'][cav_id]['time_delay']
                 if self.train_stage != 'stage1': # for stage1, we use the GT, save memory
-                    lidar_history_features = self.get_batch_pillar_features(data_dict['calibrate_data'][cav_id]['lidar_history'], pairwise_t_matrix, cav_id)
-                    predicted_offset = self.meta_flow(lidar_history_features, time_delay)
-                    predicted_offset_l.append(predicted_offset)
+                    lidar_history_features = self.get_batch_pillar_features(data_dict['calibrate_data'][cav_id]['lidar_history'], pairwise_t_matrix, cav_id) # b*t*c*h*w
+                    GT = lidar_history_features[:, 0]
+                    history_f = lidar_history_features[:, 1:]
+                    max_time_delay = max(time_delay)
+                    predicted_offset = self.syncnet(history_f, [max_time_delay]) # [b*c*h*w, b*c*h*w, b*c*h*w]
+
+                    predicted_offset = [GT] + predicted_offset
+
+                    b_predicted = []
+                    for b, time in enumerate(time_delay): # 为0不预测
+                        b_predict = predicted_offset[time][b]
+                        b_predicted.append(b_predict.unsqueeze(0))
+
+                    aligned_features = torch.cat(b_predicted, dim=0)
             
-            offsets = [offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for offset in offset_GT_l]
-            offsets = torch.cat(offsets, dim=2) # Bs, h*w, n_agent, 2
-            if self.train_stage == 'stage1':
-                batch_dict.update({'offset_GT': offsets,
-                                'pred_offset': None
-                                })
-            elif self.train_stage == 'stage2':
-                pred_offsets = [pred_offset.flatten(start_dim=1, end_dim=2).unsqueeze(2) for pred_offset in predicted_offset_l]
-                pred_offsets = torch.cat(pred_offsets, dim=2)
-                batch_dict.update({'offset_GT': offsets,
-                                'pred_offset': pred_offsets
-                                })
-        else:
-            batch_dict.update({'offset_GT': None,
-                               'pred_offset': None
-                               })
+            batch_dict.update({'aligned_features': aligned_features})
         batch_dict = self.pillar_vfe(batch_dict)
         batch_dict = self.scatter(batch_dict)
         batch_dict = self.backbone(batch_dict)

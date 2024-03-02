@@ -122,21 +122,11 @@ class DeforResNetBEVBackbone(nn.Module):
         pairwise_t_matrix[...,1,2] = pairwise_t_matrix[...,1,2] / (self.downsample_rate * self.discrete_ratio * H) * 2
         return pairwise_t_matrix
 
-    def get_projected_bev_features(self, data_dict, batch_index, agent_index):
+    def get_first_bev_features(self, data_dict, batch_index, agent_index):
         # process one batch, with T frames
         spatial_features = data_dict['spatial_features']
-        pairwise_t_matrix = data_dict['pairwise_t_matrix']
-        H, W = spatial_features.shape[2:]
-        pairwise_t_matrix = self.get_normalized_transformation(H, W, pairwise_t_matrix)
-
-        multi_scale_feature = self.resnet(spatial_features)
-        batch_features_projected =[]
-        for level_feature in multi_scale_feature:  # x 是cnn出来的多层feature
-            T, _, h, w = level_feature.shape
-            projected_level_feature = warp_affine_simple(level_feature, pairwise_t_matrix[batch_index:batch_index+1, 0, agent_index].repeat(T, 1, 1), (h, w))
-            batch_features_projected.append(projected_level_feature)
-
-        return batch_features_projected
+        spatial_features = self.resnet.layer0(spatial_features)
+        return spatial_features
 
     def forward(self, data_dict):
         spatial_features = data_dict['spatial_features']
@@ -148,6 +138,7 @@ class DeforResNetBEVBackbone(nn.Module):
         
         # if we choose multi-scale, both the single supervised branch and fused branch use multi-scale
         x = self.resnet(spatial_features)  # tuple of features
+        aligned_x = self.resnet(data_dict[aligned_x])
         ups = []
         ups_multi_scale = []
         for i in range(self.num_levels):

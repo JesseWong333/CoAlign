@@ -105,6 +105,15 @@ def convert_lidar_to_BEV_image(pcd_np, pc_range=[-100.8, -40, -3.5, 100.8, 40, 1
     canvas.draw_canvas_points(canvas_xy[valid_mask]) # Only draw valid points
     return canvas
 
+def convert_lidar_to_BEV_image_white_bg(pcd_np, pc_range=[-100.8, -40, -3.5, 100.8, 40, 1.5], bev_shape=[100, 252], scale=8, colors=(129, 129, 129)):
+    canvas = canvas_bev.Canvas_BEV_heading_right(canvas_shape=(bev_shape[0]*scale, bev_shape[1]*scale),
+                                            canvas_x_range=(pc_range[0], pc_range[3]), 
+                                            canvas_y_range=(pc_range[1], pc_range[4]),
+                                            left_hand=True)
+    canvas.canvas = np.ones_like(canvas.canvas) * 255 
+    canvas_xy, valid_mask = canvas.get_canvas_coords(pcd_np) # Get Canvas Coords
+    canvas.draw_canvas_points(canvas_xy[valid_mask], colors=colors) # Only draw valid points
+    return canvas
 
 def visualize(infer_result, pcd, pc_range, save_path, method='3d', left_hand=False):
         """

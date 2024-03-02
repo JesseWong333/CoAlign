@@ -164,6 +164,7 @@ class DAIRV2XBaseDataset(Dataset):
             
             if self.load_history:
                 history_frame_index_l, time_index = self.frame_select(frame_info)
+                history_frame_index_l = [0] + history_frame_index_l  # 最前面多家一帧sycnet监督
                 if history_frame_index_l is None:
                     if self.train:
                         return self.retrieve_base_data(random.randint(0, len(self.split_info)-1))
@@ -171,7 +172,7 @@ class DAIRV2XBaseDataset(Dataset):
                         return None
                 data[1]['lidar_np'] = self.load_lidar_timeindex(time_index, frame_info) # over write lidar_np
                 data[1]['lidar_np_history'] = [self.load_lidar_timeindex(index, frame_info) for index in history_frame_index_l]
-                data[1]['time_delay'] = time_index * 100
+                data[1]['time_delay'] = time_index
                 offset_path = os.path.join(self.root_dir, 'offset_maps_fix_flip', 'offset_'+veh_frame_id+'.npy')
                 offset_map = torch.from_numpy(np.load(offset_path))   
                 if time_index == 0:
