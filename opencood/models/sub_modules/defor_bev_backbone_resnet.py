@@ -13,6 +13,7 @@ from opencood.models.sub_modules.defor_encoder import DeforEncoder
 from opencood.models.sub_modules.defor_encoder_multi_scale_single_agent import DeforEncoderMultiScaleSingleAgent
 from opencood.models.sub_modules.resblock import ResNetModified, BasicBlock
 from opencood.models.sub_modules.torch_transformation_utils import warp_affine_simple
+from opencood.models.sub_modules.SyncLSTM import SyncLSTM
 
 DEBUG = False
 
@@ -102,6 +103,10 @@ class DeforResNetBEVBackbone(nn.Module):
             self.multi_scale = False
             self.defor_encoder = DeforEncoder(model_cfg['defor_encoder'])
 
+        if 'calibrate' in model_cfg and model_cfg['calibrate']:
+            if model_cfg['train_stage'] == 'stage2':
+                self.syncnet = SyncLSTM(channel_size = 64, spatial_size = (100, 252), k = 3)
+
         # project multi-feature to the same dimention
         if self.multi_scale:
             input_proj_list = []
@@ -122,12 +127,50 @@ class DeforResNetBEVBackbone(nn.Module):
         pairwise_t_matrix[...,1,2] = pairwise_t_matrix[...,1,2] / (self.downsample_rate * self.discrete_ratio * H) * 2
         return pairwise_t_matrix
 
-    def get_first_bev_features(self, data_dict, batch_index, agent_index):
-        # process one batch, with T frames
-        spatial_features = data_dict['spatial_features']
-        spatial_features = self.resnet.layer0(spatial_features)
-        return spatial_features
+    def featch_time_features(self, aligned_features, time_delay):
+        # aligned_flow [delay_0, delay_1,  ....]
+        b = time_delay.shape[0]
+        aligned_feature_b = []
+        for i in range(b):
+            time_delay_ = time_delay[i]  # 当前batch的 time delay
+            aligned_feature = aligned_features[time_delay_][i].unsqueeze(0) # 1, c, h, w
+            aligned_feature_b.append(aligned_feature)
+        aligned_feature_b = torch.cat(aligned_feature_b, dim=0)
+        return aligned_feature_b
 
+    def generate_aligned_features(self, history_features, time_delays):
+        # history_features: [ (b, t, c, h, w), (b, t, c, h, w), ...] # t的第一维是GT
+        # time_delays: [(b), (b), ...]
+
+        history_features_stride2 = []
+        for history_feature in history_features: # DAIR都是inf的，已经对齐了;
+            b, t, c, h, w = history_feature.shape
+            history_feature_ = history_feature.flatten(start_dim=0, end_dim=1)
+            history_feature_ = self.resnet.layer0(history_feature_)
+            history_feature_ = history_feature_.reshape(b, t, c, h//2, w//2)
+            history_features_stride2.append(history_feature_)
+        
+        cav_aligned_features = []
+        cav_aligned_features_gt = []
+        for features_strides2, time_delay in zip(history_features_stride2, time_delays):
+            max_time_delay = time_delay.max()
+            aligned_gt = features_strides2[:, 0]
+            cav_aligned_features_gt.append(aligned_gt)
+            if max_time_delay == 0:
+                pred_aligned_flow = []
+            else: 
+                pred_aligned_flow = self.syncnet(features_strides2[:, 1:], [max_time_delay])  # [(b, c, h, w), (b, c, h, w)]; sync里面把顺序改了
+            all_aligned_features = [aligned_gt] + pred_aligned_flow
+            align_feature_ = self.featch_time_features(all_aligned_features, time_delay)
+            cav_aligned_features.append(align_feature_)
+
+        return cav_aligned_features[0], cav_aligned_features_gt[0]
+    
+    def regroup(self, x, record_len):
+        cum_sum_len = torch.cumsum(record_len, dim=0)
+        split_x = torch.tensor_split(x, cum_sum_len[:-1].cpu())
+        return split_x
+    
     def forward(self, data_dict):
         spatial_features = data_dict['spatial_features']
         record_len = data_dict['record_len']
@@ -135,10 +178,23 @@ class DeforResNetBEVBackbone(nn.Module):
         
         H, W = spatial_features.shape[2:]
         pairwise_t_matrix = self.get_normalized_transformation(H, W, pairwise_t_matrix)
-        
-        # if we choose multi-scale, both the single supervised branch and fused branch use multi-scale
-        x = self.resnet(spatial_features)  # tuple of features
-        aligned_x = self.resnet(data_dict[aligned_x])
+
+        # b, c, h, w
+        aligned_features_inf, aligned_features_inf_gt = self.generate_aligned_features(data_dict['history_features'], data_dict['time_delays'])
+        data_dict['aligned_features'] = aligned_features_inf
+        data_dict['aligned_features_GT'] = aligned_features_inf_gt
+
+        aligned_features_inf_2 = self.resnet.layer1(aligned_features_inf)
+        aligned_features_inf_3 = self.resnet.layer2(aligned_features_inf_2) # b, c, h, w
+
+        # 重新把对齐的feature 放回去
+        x = self.resnet(spatial_features)  # tuple of features [ (b*2, C, H, W), (b*2, C, H, W), (b*2, C, H, W)]
+        b = aligned_features_inf.shape[0]
+        for i in range(b):
+            x[0][i*2+1] = aligned_features_inf[i]
+            x[1][i*2+1] = aligned_features_inf_2[i]
+            x[2][i*2+1] = aligned_features_inf_3[i]
+            
         ups = []
         ups_multi_scale = []
         for i in range(self.num_levels):
@@ -152,7 +208,7 @@ class DeforResNetBEVBackbone(nn.Module):
  
         if self.multi_scale:
             single_features = self.defor_encoder_single(ups_multi_scale)
-            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset_GT'], data_dict['pred_offset']) # dim=128
+            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, None, None) # dim=128
             data_dict['single_features'] = single_features
             data_dict['fused_features'] = fused_features
         else:

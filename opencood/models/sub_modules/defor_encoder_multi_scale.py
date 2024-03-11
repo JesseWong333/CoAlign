@@ -269,6 +269,8 @@ class DeforEncoderMultiScale(nn.Module):
             for j, b_level in enumerate(f_level):
                 split_x[j].append(b_level)
 
+        self.calibrate = False
+
         if self.calibrate:
             # norm the calibrated offsets
             if offsets is not None:

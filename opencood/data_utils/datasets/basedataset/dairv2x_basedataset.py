@@ -164,12 +164,12 @@ class DAIRV2XBaseDataset(Dataset):
             
             if self.load_history:
                 history_frame_index_l, time_index = self.frame_select(frame_info)
-                history_frame_index_l = [0] + history_frame_index_l  # 最前面多家一帧sycnet监督
                 if history_frame_index_l is None:
                     if self.train:
                         return self.retrieve_base_data(random.randint(0, len(self.split_info)-1))
                     else:
                         return None
+                history_frame_index_l = [0] + history_frame_index_l  # 最前面多家一帧sycnet监督
                 data[1]['lidar_np'] = self.load_lidar_timeindex(time_index, frame_info) # over write lidar_np
                 data[1]['lidar_np_history'] = [self.load_lidar_timeindex(index, frame_info) for index in history_frame_index_l]
                 data[1]['time_delay'] = time_index
@@ -232,7 +232,7 @@ class DAIRV2XBaseDataset(Dataset):
             # 训练时随机选择: time_delay:time_delay + history_frame
             max_trial = 5
             for _ in range(max_trial): 
-                time_index = random.randint(0, self.max_time_delay) # 随机在最大time_delay中选一帧
+                time_index = random.randint(1, self.max_time_delay) # 随机在最大time_delay中选一帧
                 # 有可能当前的帧全部不满足 todo
                 # time_index = np.floor(np.random.exponential(scale=2.0)).astype(np.int32) # 均值为2
                 # if time_index > self.max_time_delay:

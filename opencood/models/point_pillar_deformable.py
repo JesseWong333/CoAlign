@@ -41,8 +41,9 @@ class PointPillarDeformable(nn.Module):
             self.calibrate = True
             # create calibrate model
             if self.train_stage == 'stage2':
+                pass
                 # self.meta_flow = MetaFlow(args['meta_flow'])
-                self.syncnet = SyncLSTM(channel_size = 64, spatial_size = (200, 504), k = 3, TM_Flag = False, compressed_size = 64)
+                # self.syncnet = SyncLSTM(channel_size = 64, spatial_size = (200, 504), k = 3, TM_Flag = False, compressed_size = 64)
         else:
             self.calibrate = False
 
@@ -85,30 +86,18 @@ class PointPillarDeformable(nn.Module):
             
         if self.calibrate:
             assert 'calibrate_data' in data_dict
-            # create a list of dict
-            offset_GT_l = []
-            predicted_offset_l = []
+            lidar_history_features_cavs = []
+            time_delays = []
             for cav_id in data_dict['calibrate_data']:
-                offset_GT = data_dict['calibrate_data'][cav_id]['offset']  # 这个可能小于batch_size, record_len中记录了这个信息
-                offset_GT_l.append(offset_GT)
                 time_delay = data_dict['calibrate_data'][cav_id]['time_delay']
                 if self.train_stage != 'stage1': # for stage1, we use the GT, save memory
                     lidar_history_features = self.get_batch_pillar_features(data_dict['calibrate_data'][cav_id]['lidar_history'], pairwise_t_matrix, cav_id) # b*t*c*h*w
-                    GT = lidar_history_features[:, 0]
-                    history_f = lidar_history_features[:, 1:]
-                    max_time_delay = max(time_delay)
-                    predicted_offset = self.syncnet(history_f, [max_time_delay]) # [b*c*h*w, b*c*h*w, b*c*h*w]
+                    lidar_history_features_cavs.append(lidar_history_features)
+                    time_delays.append(time_delay)
 
-                    predicted_offset = [GT] + predicted_offset
+            batch_dict.update({'history_features': lidar_history_features_cavs,
+                               'time_delays': time_delays})
 
-                    b_predicted = []
-                    for b, time in enumerate(time_delay): # 为0不预测
-                        b_predict = predicted_offset[time][b]
-                        b_predicted.append(b_predict.unsqueeze(0))
-
-                    aligned_features = torch.cat(b_predicted, dim=0)
-            
-            batch_dict.update({'aligned_features': aligned_features})
         batch_dict = self.pillar_vfe(batch_dict)
         batch_dict = self.scatter(batch_dict)
         batch_dict = self.backbone(batch_dict)
@@ -122,8 +111,8 @@ class PointPillarDeformable(nn.Module):
                        'reg_preds': rm}
         
         if self.calibrate and self.train_stage != 'stage1':
-            data_dict['label_dict'].update({'offset': offsets})  # in-place change, save back to label_dict
-            output_dict.update({'pred_offset': pred_offsets})
+            data_dict['label_dict'].update({'aligned_features_GT': batch_dict['aligned_features_GT']})  # in-place change, save back to label_dict
+            output_dict.update({'aligned_features': batch_dict['aligned_features']})
         
         if self.supervise_single:
             single_features = batch_dict['single_features']

@@ -96,22 +96,22 @@ model:
   args:
     calibrate: &calibrate true
     train_stage: *train_stage
-    meta_flow:
-      embed_dims: 128
-      n_frame: *history_frame
-      block_cfgs:
-        [[128, 8, 8, 8, 8, 0.1, 1, 5, ["cross_attn", "norm", "ffn", "norm", 
-                                        "cross_attn", "norm", "ffn", "norm",
-                                        "cross_attn", "norm", "ffn", "norm"]],
-          [128, 8, 8, 8, 8, 0.1, 1, 5, ["self_attn", "norm", "ffn", "norm", 
-                                        "self_attn", "norm", "ffn", "norm"] ]
-        ]
-      backbone: 
-        upsample_strides: [1, 2, 4]
-        num_levels: 3
-        num_filters: [64, 128, 256]
-        num_upsample_filters: [128, 128, 128]
-        embed_dims: 128
+    # meta_flow:
+    #   embed_dims: 128
+    #   n_frame: *history_frame
+    #   block_cfgs:
+    #     [[128, 8, 8, 8, 8, 0.1, 1, 5, ["cross_attn", "norm", "ffn", "norm", 
+    #                                     "cross_attn", "norm", "ffn", "norm",
+    #                                     "cross_attn", "norm", "ffn", "norm"]],
+    #       [128, 8, 8, 8, 8, 0.1, 1, 5, ["self_attn", "norm", "ffn", "norm", 
+    #                                     "self_attn", "norm", "ffn", "norm"] ]
+    #     ]
+    #   backbone: 
+    #     upsample_strides: [1, 2, 4]
+    #     num_levels: 3
+    #     num_filters: [64, 128, 256]
+    #     num_upsample_filters: [128, 128, 128]
+    #     embed_dims: 128
     supervise_single: true
     use_seperate_head: true
     voxel_size: *voxel_size
@@ -126,6 +126,8 @@ model:
     point_pillar_scatter:
       num_features: 64
     base_bev_backbone: # backbone will downsample 2x
+      calibrate: *calibrate
+      train_stage: *train_stage
       resnet: true
       voxel_size: *voxel_size
       layer_nums: [3, 5, 8]
