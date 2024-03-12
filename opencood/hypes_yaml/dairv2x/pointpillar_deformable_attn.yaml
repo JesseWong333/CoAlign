@@ -31,7 +31,7 @@ noise_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 4
   epoches: 20
   eval_freq: 2
   save_freq: 2
