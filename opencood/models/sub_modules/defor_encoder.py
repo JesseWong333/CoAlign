@@ -341,6 +341,6 @@ class DeforEncoder(nn.Module):
             bev_queries = bev_queries.permute(0, 2, 1).view(1, C, H, W)
             out.append(bev_queries)
        
-            return torch.cat(out, dim=0)
+        return torch.cat(out, dim=0)
 
     

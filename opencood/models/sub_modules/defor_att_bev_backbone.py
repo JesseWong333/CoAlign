@@ -170,7 +170,7 @@ class DeforBEVBackbone(nn.Module):
 
         if self.multi_scale:
             single_features = self.defor_encoder_single(ups_multi_scale)
-            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset'], data_dict['offset_mask']) # dim=128
+            fused_features = self.defor_encoder(ups_multi_scale, record_len, pairwise_t_matrix, data_dict['offset_GT'], data_dict['pred_offset']) # dim=128
             data_dict['single_features'] = single_features
             data_dict['fused_features'] = fused_features
         else:
