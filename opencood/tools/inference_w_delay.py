@@ -37,6 +37,19 @@ def test_parser():
     opt = parser.parse_args()
     return opt
 
+def get_box_speed_group(offset_map, boxes):
+    pass
+
+def group_gt_speed(offset_map, gt):
+    # gt: N, 8, 3 
+    # offset_map: 
+    gt_numpy_2d = gt.cpu().numpy()
+    number_gt_boxes = gt_numpy_2d.size(0)
+    group = []
+    for i in range(number_gt_boxes):
+        box = gt_numpy_2d[i]
+        xx = get_box_speed_group(box)
+    pass
 
 def main():
     opt = test_parser()

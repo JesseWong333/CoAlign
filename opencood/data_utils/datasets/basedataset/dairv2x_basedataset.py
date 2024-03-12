@@ -177,10 +177,11 @@ class DAIRV2XBaseDataset(Dataset):
                 data[1]['time_delay'] = time_index * 100
                 offset_path = os.path.join(self.root_dir, 'offset_maps_fix_flip', 'offset_'+veh_frame_id+'.npy')
                 offset_map = torch.from_numpy(np.load(offset_path))   
-                if time_index == 0:
-                    data[1]['params']["offset"] = torch.zeros((1, self.bev_h, self.bev_w, 2))
-                else:
-                    data[1]['params']["offset"] = offset_map[time_index-1].unsqueeze(0)
+                # if time_index == 0:
+                #     data[1]['params']["offset"] = torch.zeros((1, self.bev_h, self.bev_w, 2))
+                # else:
+                #     data[1]['params']["offset"] = offset_map[time_index-1].unsqueeze(0)
+                data[1]['params']["offset"] = offset_map[2].unsqueeze(0) # 通过这个来group speed
               
         # Label for single side
         data[0]['params']['vehicles_single_front'] = read_json(os.path.join(self.root_dir, \
