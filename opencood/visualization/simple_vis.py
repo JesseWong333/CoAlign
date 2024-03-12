@@ -95,9 +95,9 @@ def visualize(infer_result, pcd, pc_range, save_path, method='3d', left_hand=Fal
                                             canvas_x_range=(pc_range[0], pc_range[3]), 
                                             canvas_y_range=(pc_range[1], pc_range[4]),
                                             left_hand=left_hand) 
-
+            canvas.canvas = np.ones_like(canvas.canvas) * 255 # white_bg
             canvas_xy, valid_mask = canvas.get_canvas_coords(pcd_np) # Get Canvas Coords
-            canvas.draw_canvas_points(canvas_xy[valid_mask]) # Only draw valid points
+            canvas.draw_canvas_points(canvas_xy[valid_mask], colors=(129, 129, 129)) # Only draw valid points
             if gt_box_tensor is not None:
                 canvas.draw_boxes(gt_box_np,colors=(0,255,0), texts=gt_name)
             if pred_box_tensor is not None:
