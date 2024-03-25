@@ -15,9 +15,15 @@ import numpy as np
 import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils, inference_utils
 from opencood.data_utils.datasets import build_dataset
-from opencood.utils import eval_utils
+from opencood.utils import eval_utils_group as eval_utils
 from opencood.visualization import vis_utils, my_vis, simple_vis
+import math
+import json
 torch.multiprocessing.set_sharing_strategy('file_system')
+
+def write_json(path_json, data):
+    with open(path_json, "w") as f:
+        json.dump(data, f)
 
 def test_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -37,19 +43,39 @@ def test_parser():
     opt = parser.parse_args()
     return opt
 
-def get_box_speed_group(offset_map, boxes):
-    pass
+def scale_boxes(boxes, pc_range=[-100.8, -40, -3.5, 100.8, 40, 1.5], bev_shape=[100, 252] ):
+    # boxes: N, 4, 2
+    # scale_y = 100 / (40*2)
+    # scale_x = 252 / (100.8*2)
+    scale_y = bev_shape[0] / (pc_range[4] - pc_range[1])
+    scale_x = bev_shape[1] / (pc_range[3] - pc_range[0])
+
+    boxes[:, 0] = (boxes[:, 0] - pc_range[0])* scale_x
+    boxes[:, 1] = (boxes[:, 1] - pc_range[1])* scale_y
+   
+    return boxes
+
+def get_box_speed_group(offset_map, box):
+    box_2d = box[:4,:2] # 
+    box_2d_scaled = scale_boxes(box_2d) # 4, 2
+    mean_xy = box_2d_scaled.mean(axis=0)
+    mean_x, mean_y = int(mean_xy[0]), int(mean_xy[1])
+    offset = offset_map[mean_y, mean_x]
+    speed = math.sqrt(offset[0]**2 + offset[1]**2) / 1.25 / 0.3 # 300ms移动距离 m/s
+    return speed
 
 def group_gt_speed(offset_map, gt):
     # gt: N, 8, 3 
     # offset_map: 
     gt_numpy_2d = gt.cpu().numpy()
-    number_gt_boxes = gt_numpy_2d.size(0)
+    offset_map = offset_map.squeeze(0).cpu().numpy()
+    number_gt_boxes = gt_numpy_2d.shape[0]
     group = []
     for i in range(number_gt_boxes):
         box = gt_numpy_2d[i]
-        xx = get_box_speed_group(box)
-    pass
+        speed_group = get_box_speed_group(offset_map, box)
+        group.append(speed_group)
+    return group
 
 def main():
     opt = test_parser()
@@ -136,7 +162,7 @@ def main():
                                 pin_memory=False,
                                 drop_last=False,)
         val_loaders.append(val_loader)
-    
+    all_box_speed= []
     AP30 = []
     AP50 = []
     AP70 = []
@@ -144,12 +170,17 @@ def main():
         infer_info = opt.fusion_method + opt.note + 'delay_' + str(time_delay*100) + 'ms'
 
         # Create the dictionary for evaluation
-        result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0, 'score': []},                
-                0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},                
-                0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
-    
+        # # 
+        result_stat = {0.3: {0: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 1: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 2: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 3: {'tp': [], 'fp': [], 'gt': 0, 'score': []}},                
+                0.5: {0: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 1: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 2: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 3: {'tp': [], 'fp': [], 'gt': 0, 'score': []}},                
+                0.7: {0: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 1: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 2: {'tp': [], 'fp': [], 'gt': 0, 'score': []}, 3: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}}
+        # result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0, 'score': []},                
+        #                    0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},                
+        #                    0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
         for i, batch_data in enumerate(data_loader):
             print(f"{infer_info}_{i}")
+            # if i > 50:
+            #     break
             if batch_data is None:
                 continue
             with torch.no_grad():
@@ -188,20 +219,25 @@ def main():
                 gt_box_tensor = infer_result['gt_box_tensor']
                 pred_score = infer_result['pred_score']
                 
+                speed_groups = group_gt_speed(batch_data['ego']['calibrate_data'][1]['offset'], gt_box_tensor)
+                # all_box_speed += speed_groups
                 eval_utils.caluclate_tp_fp(pred_box_tensor,
                                         pred_score,
                                         gt_box_tensor,
                                         result_stat,
+                                        speed_groups,
                                         0.3)
                 eval_utils.caluclate_tp_fp(pred_box_tensor,
                                         pred_score,
                                         gt_box_tensor,
                                         result_stat,
+                                        speed_groups,
                                         0.5)
                 eval_utils.caluclate_tp_fp(pred_box_tensor,
                                         pred_score,
                                         gt_box_tensor,
                                         result_stat,
+                                        speed_groups,
                                         0.7)
                 if opt.save_npy:
                     npy_save_path = os.path.join(opt.model_dir, 'npy')
@@ -249,6 +285,7 @@ def main():
                                         left_hand=left_hand)
             torch.cuda.empty_cache()
 
+        # write_json("./opencood/logs/dair_speed_group.json", all_box_speed)
         ap30, ap50, ap70 = eval_utils.eval_final_results(result_stat,
                                     opt.model_dir, infer_info)
         AP30.append(ap30)

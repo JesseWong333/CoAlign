@@ -217,6 +217,9 @@ def compute_iou(box, boxes):
 
     return np.array(iou, dtype=np.float32)
 
+def compute_dist(box, boxes):
+    dists = [box.distance(b) for b in boxes]
+    return np.array(dists, dtype=np.float32)
 
 def convert_format(boxes_array):
     """
